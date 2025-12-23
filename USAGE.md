@@ -102,19 +102,8 @@ crontab -e
 cp config/config.yaml config/config_ai.yaml
 cp config/config.yaml config/config_finance.yaml
 
-# 修改每个配置文件的主题
-# 然后分别运行
-python src/main.py --config config/config_ai.yaml
-```
-
-### 技巧4: 断点续传
-
-如果分析中断，再次运行会自动从断点继续：
-
-```python
-# 系统会自动检查checkpoints目录
-# 如果需要重新开始，删除checkpoint文件：
-rm logs/checkpoints/*.json
+# 修改每个配置文件的主题后运行
+cd src && python main.py
 ```
 
 ## 常见使用场景

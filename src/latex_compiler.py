@@ -3,6 +3,7 @@ LaTeX编译模块
 将Markdown报告转换并编译为PDF格式
 """
 
+import logging
 import subprocess
 import re
 from pathlib import Path
@@ -13,16 +14,15 @@ from jinja2 import Template
 class LaTeXCompiler:
     """LaTeX编译器"""
     
-    def __init__(self, config_manager, logger_manager):
+    def __init__(self, config_manager):
         """
         初始化LaTeX编译器
         
         Args:
             config_manager: 配置管理器实例
-            logger_manager: 日志管理器实例
         """
         self.config = config_manager
-        self.logger = logger_manager.get_logger()
+        self.logger = logging.getLogger(f"智览系统v{config_manager.version}")
         self.output_dir = config_manager.get_output_dir()
         self.assets_dir = config_manager.get_assets_dir()
         self.templates_dir = Path(config_manager.project_root) / "templates"

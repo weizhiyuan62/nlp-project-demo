@@ -1,0 +1,33 @@
+# API配置文件
+
+# 搜索引擎配置
+bing_search:
+  enabled: true
+  api_key: "YOUR_BING_API_KEY"
+  endpoint: "https://api.bing.microsoft.com/v7.0/search"
+
+# NewsAPI配置
+newsapi:
+  enabled: true
+  api_key: "7ef303e7bb7641ee9b7a8050cc23f309"
+  endpoint: "https://newsapi.org/v2/everything"
+
+# 学术API配置
+arxiv:
+  enabled: true
+  endpoint: "http://export.arxiv.org/api/query"
+
+# 大模型API配置 (可选择Qwen, gemini等)
+llm:
+  provider: "qwen"  # qwen, gemini, llama(optional)
+  api_key: "sk-312d7a8ba0034510b93e96246956bc00"
+  model: "qwen3-max"
+  endpoint: "https://dashscope.aliyuncs.com/api/v1/services/aigc/text-generation/generation"
+  max_tokens: 2000
+  temperature: 0.7
+
+# 图像生成API配置（可选）
+image_generation:
+  enabled: false
+  provider: "dalle"  # dalle, stable-diffusion
+  api_key: "YOUR_IMAGE_API_KEY"

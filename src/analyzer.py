@@ -3,26 +3,26 @@
 使用大语言模型对采集的信息进行评分、筛选和关联分析
 """
 
+import logging
 import json
 import requests
 from typing import List, Dict, Any, Tuple
 from datetime import datetime
 import tqdm
 
+
 class InformationAnalyzer:
     """信息智能分析器"""
     
-    def __init__(self, config_manager, logger_manager):
+    def __init__(self, config_manager):
         """
         初始化信息分析器
         
         Args:
             config_manager: 配置管理器实例
-            logger_manager: 日志管理器实例
         """
         self.config = config_manager
-        self.logger = logger_manager.get_logger()
-        self.logger_manager = logger_manager
+        self.logger = logging.getLogger(f"智览系统v{config_manager.version}")
         self.llm_config = config_manager.get_api_config('llm')
         self.scoring_weights = config_manager.get('analysis', 'scoring', default={})
         self.min_score = config_manager.get('analysis', 'min_score', default=0.6)
@@ -40,11 +40,16 @@ class InformationAnalyzer:
         """
         self.logger.info(f"开始分析 {len(items)} 条信息")
         
-        # 检查断点
-        checkpoint = self.logger_manager.load_checkpoint('analysis')
-        if checkpoint:
-            self.logger.info("从断点恢复分析...")
-            return checkpoint
+        if not items:
+            self.logger.warning("没有信息需要分析")
+            return {
+                'scored_items': [],
+                'filtered_items': [],
+                'key_points': [],
+                'relationships': [],
+                'statistics': {},
+                'analysis_time': datetime.now().isoformat()
+            }
         
         # 批量评分
         scored_items = self._score_items_batch(items, topics)
@@ -70,9 +75,6 @@ class InformationAnalyzer:
             'statistics': statistics,
             'analysis_time': datetime.now().isoformat()
         }
-        
-        # 保存断点
-        self.logger_manager.save_checkpoint('analysis', result)
         
         return result
     

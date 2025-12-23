@@ -3,31 +3,29 @@
 支持从Bing Search、NewsAPI、arXiv等多个数据源采集信息
 """
 
+import logging
 import requests
 import time
-from typing import List, Dict, Any, Optional
-from datetime import datetime, timedelta
+from typing import List, Dict, Any
+from datetime import datetime
 from urllib.parse import quote, urlencode
 import hashlib
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from bs4 import BeautifulSoup
-import re
 
 
 class DataCollector:
     """多源数据采集器"""
     
-    def __init__(self, config_manager, logger_manager):
+    def __init__(self, config_manager):
         """
         初始化数据采集器
         
         Args:
             config_manager: 配置管理器实例
-            logger_manager: 日志管理器实例
         """
         self.config = config_manager
-        self.logger = logger_manager.get_logger()
-        self.logger_manager = logger_manager
+        self.logger = logging.getLogger(f"智览系统v{config_manager.version}")
         self.collected_items = []
         self.seen_hashes = set()  # 用于去重
     
@@ -43,14 +41,11 @@ class DataCollector:
         Returns:
             采集到的信息列表
         """
-        self.logger.info(f"开始采集信息 - 主题: {topics}, 时间范围: {start_date} 到 {end_date}")
+        self.logger.info(f"开始采集信息 - 主题: {topics}, 时间范围: {start_date.date()} 到 {end_date.date()}")
         
-        # 检查断点
-        checkpoint = self.logger_manager.load_checkpoint('data_collection')
-        if checkpoint:
-            self.logger.info("发现断点，从断点继续...")
-            self.collected_items = checkpoint.get('collected_items', [])
-            self.seen_hashes = set(checkpoint.get('seen_hashes', []))
+        # 重置状态，确保每次运行独立
+        self.collected_items = []
+        self.seen_hashes = set()
         
         all_items = []
         
@@ -79,12 +74,6 @@ class DataCollector:
         # 去重
         unique_items = self._deduplicate(all_items)
         self.logger.info(f"采集完成: 总计 {len(all_items)} 条，去重后 {len(unique_items)} 条")
-        
-        # 保存断点
-        self.logger_manager.save_checkpoint('data_collection', {
-            'collected_items': unique_items,
-            'seen_hashes': list(self.seen_hashes)
-        })
         
         return unique_items
     

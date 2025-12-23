@@ -3,6 +3,7 @@
 生成词云图、时间趋势图、信息源分布图等可视化图表
 """
 
+import logging
 import matplotlib.pyplot as plt
 import matplotlib
 matplotlib.use('Agg')  # 使用非GUI后端
@@ -24,16 +25,15 @@ plt.rcParams['axes.unicode_minus'] = False  # 解决负号显示问题
 class DataVisualizer:
     """数据可视化器"""
     
-    def __init__(self, config_manager, logger_manager):
+    def __init__(self, config_manager):
         """
         初始化数据可视化器
         
         Args:
             config_manager: 配置管理器实例
-            logger_manager: 日志管理器实例
         """
         self.config = config_manager
-        self.logger = logger_manager.get_logger()
+        self.logger = logging.getLogger(f"智览系统v{config_manager.version}")
         self.assets_dir = config_manager.get_assets_dir()
         self.viz_config = config_manager.get('report', 'visualization', default={})
         
@@ -107,8 +107,9 @@ class DataVisualizer:
             
             # 过滤停用词和短词
             stopwords = {'的', '了', '在', '是', '和', '与', '等', '为', '将', '有', '中', '对', 
-                        '这', '个', '我', '你', '他', '她', '它', '们', '及', '以', '到'}
-            filtered_words = [w for w in words if len(w) > 1 and w not in stopwords]
+                        '这', '个', '我', '你', '他', '她', '它', '们', '及', '以', '到', '也', '就',
+                        '都', '而', '要', '会', '可', '可以', '不', '并', '但', '或', '如', '如果'}
+            filtered_words = [w.strip() for w in words if len(w) > 1 and w.strip() not in stopwords and w.strip()]
             
             # 生成词频字符串
             word_freq = Counter(filtered_words)
@@ -118,12 +119,25 @@ class DataVisualizer:
                 self.logger.warning("没有足够的文本生成词云")
                 return None
             
-            # 创建词云
+            # 创建词云（兼容不同操作系统的字体）
+            import os
+            font_paths = [
+                '/System/Library/Fonts/PingFang.ttc',  # macOS
+                '/usr/share/fonts/truetype/arphic/uming.ttc',  # Linux
+                'C:/Windows/Fonts/msyh.ttc',  # Windows
+                '/usr/share/fonts/truetype/droid/DroidSansFallbackFull.ttf',  # Linux备选
+            ]
+            font_path = None
+            for fp in font_paths:
+                if os.path.exists(fp):
+                    font_path = fp
+                    break
+            
             wordcloud = WordCloud(
                 width=1200,
                 height=600,
                 background_color='white',
-                font_path='/System/Library/Fonts/PingFang.ttc',  # macOS中文字体
+                font_path=font_path,
                 max_words=100,
                 relative_scaling=0.5,
                 colormap='viridis'

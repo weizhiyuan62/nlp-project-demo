@@ -1,6 +1,7 @@
 # 智览 (ZhiLan) - 基于大模型的智能信息聚合与分析系统
 
 [![Python Version](https://img.shields.io/badge/python-3.8%2B-blue)](https://www.python.org/)
+[![Hydra](https://img.shields.io/badge/config-Hydra-89b8cd)](https://hydra.cc/)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
 ## 📋 项目简介
@@ -9,11 +10,11 @@
 
 ### 主要功能
 
-✨ **多源信息采集**: 整合Bing Search、NewsAPI、arXiv等多个数据源  
-🤖 **智能分析筛选**: 使用大模型进行多维度评分（相关性、重要性、时效性、可靠性）  
-📊 **数据可视化**: 自动生成词云图、时间趋势图、信息源分布图等  
-📄 **报告自动生成**: 生成结构化的Markdown和PDF格式报告  
-🔄 **容错机制**: 支持断点续传、自动重试、错误恢复
+- **多源信息采集**: 整合Bing Search、NewsAPI、arXiv等多个数据源  
+- **智能分析筛选**: 使用大模型进行多维度评分（相关性、重要性、时效性、可靠性）  
+- **数据可视化**: 自动生成词云图、时间趋势图、信息源分布图等  
+- **报告自动生成**: 生成结构化的Markdown和PDF格式报告  
+- **Hydra配置管理**: 使用Hydra统一管理配置和日志，支持多次运行结果分类存储
 
 ## 🚀 快速开始
 
@@ -33,40 +34,33 @@ git clone <repository-url>
 cd my-project-demo
 ```
 
-2. **创建虚拟环境**
-
+2. **conda虚拟环境配置**
 ```bash
-conda create -n zhilan python=3.9
+conda create -n zhilan python=3.10
 conda activate zhilan
-```
-
-3. **安装依赖**
-
-```bash
 pip install -r requirements.txt
 ```
 
-4. **配置API密钥**
+3. **配置API密钥**
 
-编辑 `config/config.yaml` 文件，填入你的API密钥：
+编辑 `conf/api/default.yaml` 文件，填入你的API密钥：
 
 ```yaml
-api:
-  # 搜索引擎配置
-  bing_search:
-    enabled: true
-    api_key: "YOUR_BING_SEARCH_API_KEY"  # 替换为你的密钥
-  
-  # 新闻API配置
-  newsapi:
-    enabled: true
-    api_key: "YOUR_NEWSAPI_KEY"  # 替换为你的密钥
-  
-  # 大模型API配置
-  llm:
-    provider: "qwen"
-    api_key: "YOUR_LLM_API_KEY"  # 替换为你的密钥
-    model: "qwen-plus"
+# 搜索引擎配置
+bing_search:
+  enabled: true
+  api_key: "YOUR_BING_SEARCH_API_KEY"
+
+# 新闻API配置
+newsapi:
+  enabled: true
+  api_key: "YOUR_NEWSAPI_KEY"
+
+# 大模型API配置
+llm:
+  provider: "qwen"
+  api_key: "YOUR_LLM_API_KEY"
+  model: "qwen3-max"
 ```
 
 ### 运行系统
@@ -76,20 +70,58 @@ cd src
 python main.py
 ```
 
-## 📖 使用指南
+### 命令行参数覆盖
 
-### 配置说明
+Hydra支持通过命令行覆盖配置：
 
-主要配置文件位于 `config/config.yaml`，包含以下配置项：
+```bash
+# 修改主题
+python main.py collection.topics="[大模型,ChatGPT]"
 
-#### 1. 项目信息
-```yaml
-project:
-  name: "智览信息聚合系统"
-  version: "1.0.0"
+# 修改时间范围
+python main.py collection.time_range=last_week
+
+# 修改报告风格
+python main.py report.style=academic
+
+# 组合多个参数
+python main.py collection.topics="[人工智能]" report.style=brief
 ```
 
-#### 2. 信息采集配置
+## 📖 配置说明
+
+### Hydra 配置结构
+
+```
+conf/
+├── config.yaml          # 主配置文件
+└── api/
+    └── default.yaml     # API密钥配置
+```
+
+### 运行目录管理
+
+每次运行会在 `outputs/` 下创建按日期时间分类的目录：
+
+```
+outputs/
+├── 2025-12-23/
+│   ├── 10-30-00/           # 第一次运行
+│   │   ├── .hydra/         # Hydra配置备份
+│   │   ├── zhilan.log      # 运行日志
+│   │   └── results/        # 结果目录
+│   │       ├── assets/     # 可视化图表
+│   │       ├── report_*.md # Markdown报告
+│   │       └── report_*.pdf# PDF报告
+│   └── 14-20-00/           # 第二次运行
+│       └── ...
+└── 2025-12-24/
+    └── ...
+```
+
+### 主要配置项
+
+#### 信息采集配置
 ```yaml
 collection:
   topics:
@@ -99,7 +131,7 @@ collection:
   max_items_per_topic: 50
 ```
 
-#### 3. 分析配置
+#### 分析配置
 ```yaml
 analysis:
   scoring:
@@ -110,7 +142,7 @@ analysis:
   min_score: 0.6
 ```
 
-#### 4. 报告配置
+#### 报告配置
 ```yaml
 report:
   style: "detailed"  # brief, detailed, academic
@@ -142,11 +174,13 @@ report:
 
 ```
 my-project-demo/
-├── config/              # 配置文件
-│   └── config.yaml      # 主配置文件
+├── conf/                # Hydra 配置目录
+│   ├── config.yaml      # 主配置文件
+│   └── api/             # API配置
+│       └── default.yaml # API密钥配置
 ├── src/                 # 源代码
-│   ├── main.py         # 主程序入口
-│   ├── config.py       # 配置管理模块
+│   ├── main.py         # 主程序入口 (@hydra.main)
+│   ├── config.py       # 配置管理模块 (Hydra + OmegaConf)
 │   ├── logger.py       # 日志和错误处理
 │   ├── data_collector.py    # 数据采集模块
 │   ├── analyzer.py     # 智能分析模块
@@ -155,34 +189,29 @@ my-project-demo/
 │   └── latex_compiler.py    # LaTeX编译模块
 ├── templates/           # LaTeX模板
 │   └── report_template.tex
-├── assets/             # 生成的图表
-├── outputs/            # 输出报告
-├── logs/               # 日志文件
+├── outputs/            # Hydra 输出目录 (按日期分类)
+│   └── YYYY-MM-DD/
+│       └── HH-MM-SS/
+│           ├── .hydra/     # 配置备份
+│           ├── zhilan.log  # 运行日志
+│           └── results/    # 结果目录
 ├── requirements.txt    # 依赖包列表
 ├── proposal.tex        # 项目计划书
 └── README.md          # 项目说明
 ```
 
-## 📊 输出示例
+## 📊 日志系统
 
-运行完成后，系统会生成以下输出：
-
-- **Markdown报告**: `outputs/report_YYYYMMDD_HHMMSS.md`
-- **PDF报告**: `outputs/report_YYYYMMDD_HHMMSS.pdf` (如果配置了PDF生成)
-- **可视化图表**: `assets/*.png`
-- **日志文件**: `logs/zhilan_YYYYMMDD.log`
-
-## 🔧 高级功能
-
-### 断点续传
-
-系统支持断点续传功能，如果运行过程中意外中断，再次运行时会从断点继续：
+系统使用 Hydra 统一管理日志，每个模块使用统一的 logger：
 
 ```python
-# 在logger.py中实现
-log_manager.save_checkpoint('data_collection', data)
-data = log_manager.load_checkpoint('data_collection')
+import logging
+logger = logging.getLogger(f"智览系统v{version}")
 ```
+
+日志输出到每次运行的目录：`outputs/YYYY-MM-DD/HH-MM-SS/zhilan.log`
+
+## 🔧 高级功能
 
 ### 自动重试
 

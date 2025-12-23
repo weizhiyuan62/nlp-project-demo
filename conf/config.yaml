@@ -1,9 +1,13 @@
-# 智览系统配置文件
+# 智览系统 Hydra 主配置文件
+
+defaults:
+  - api: default
+  - _self_
 
 # 项目基本信息
 project:
   name: "智览信息聚合系统"
-  version: "1.0.0"
+  version: "2.0.0"
 
 # 信息采集配置
 collection:
@@ -27,40 +31,6 @@ collection:
   
   # 每个主题最大采集数量
   max_items_per_topic: 50
-
-# API配置
-api:
-  # 搜索引擎配置
-  bing_search:
-    enabled: true
-    api_key: "nothing"
-    endpoint: "https://api.bing.microsoft.com/v7.0/search"
-  
-  # 新闻API配置
-  newsapi:
-    enabled: true
-    api_key: "7ef303e7bb7641ee9b7a8050cc23f309"
-    endpoint: "https://newsapi.org/v2/everything"
-  
-  # 学术API配置
-  arxiv:
-    enabled: true
-    endpoint: "http://export.arxiv.org/api/query"
-  
-  # 大模型API配置 (可选择Qwen、OpenAI等)
-  llm:
-    provider: "qwen"  # qwen, gemini, llama(optional)
-    api_key: "sk-312d7a8ba0034510b93e96246956bc00"
-    model: "qwen3-max"
-    endpoint: "https://dashscope.aliyuncs.com/api/v1/services/aigc/text-generation/generation"
-    max_tokens: 2000
-    temperature: 0.7
-  
-  # 图像生成API配置（可选）
-  image_generation:
-    enabled: false
-    provider: "dalle"  # dalle, stable-diffusion
-    api_key: "YOUR_IMAGE_API_KEY"
 
 # 分析配置
 analysis:
@@ -107,8 +77,8 @@ output:
     - "markdown"
     - "pdf"
   
-  # 输出路径
-  output_dir: "outputs"
+  # 结果存放目录（相对于每次运行的 Hydra 输出目录）
+  results_dir: "results"
   
   # 资源路径
   assets_dir: "assets"
@@ -118,15 +88,6 @@ output:
     compiler: "xelatex"  # pdflatex, xelatex
     template: "default"  # 使用的LaTeX模板名称
 
-# 日志配置
-logging:
-  level: "INFO"  # DEBUG, INFO, WARNING, ERROR
-  console: true
-  file: true
-  log_dir: "logs"
-  max_bytes: 10485760  # 10MB
-  backup_count: 5
-
 # 错误处理配置
 error_handling:
   # API调用重试配置
@@ -134,8 +95,50 @@ error_handling:
     max_attempts: 3
     backoff_factor: 2  # 指数退避因子
     initial_delay: 1   # 初始延迟(秒)
+
+# Hydra 配置
+hydra:
+  run:
+    # 运行目录按日期和时间分类
+    dir: outputs/${now:%Y-%m-%d}/${now:%H-%M-%S}
   
-  # 断点续传
-  checkpoint:
-    enabled: true
-    checkpoint_dir: "logs/checkpoints"
+  sweep:
+    dir: outputs/multirun/${now:%Y-%m-%d}/${now:%H-%M-%S}
+    subdir: ${hydra.job.num}
+  
+  job:
+    chdir: true  # 切换到输出目录运行
+  
+  # 日志配置
+  job_logging:
+    version: 1
+    formatters:
+      simple:
+        format: '%(asctime)s - 智览系统v${project.version} - %(levelname)s - %(message)s'
+        datefmt: '%Y-%m-%d %H:%M:%S'
+      colored:
+        (): colorlog.ColoredFormatter
+        format: '%(log_color)s%(asctime)s - 智览系统v${project.version} - %(levelname)s - %(message)s'
+        datefmt: '%Y-%m-%d %H:%M:%S'
+        log_colors:
+          DEBUG: cyan
+          INFO: green
+          WARNING: yellow
+          ERROR: red
+          CRITICAL: red,bg_white
+    handlers:
+      console:
+        class: logging.StreamHandler
+        formatter: colored
+        stream: ext://sys.stdout
+      file:
+        class: logging.FileHandler
+        formatter: simple
+        filename: zhilan.log
+        encoding: utf-8
+    root:
+      level: INFO
+      handlers:
+        - console
+        - file
+    disable_existing_loggers: false

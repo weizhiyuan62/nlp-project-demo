@@ -1,16 +1,20 @@
 """
 智览系统主程序
-整合所有模块，实现完整的自动化信息分析流程
+使用 Hydra 进行配置管理，整合所有模块实现完整的自动化信息分析流程
 """
 
 import sys
+import logging
 from pathlib import Path
+
+import hydra
+from omegaconf import DictConfig, OmegaConf
 
 # 添加src目录到路径
 sys.path.insert(0, str(Path(__file__).parent))
 
-from config import get_config
-from logger import LoggerManager, log_execution_time, handle_exceptions
+from config import ConfigManager, init_config, get_logger
+from logger import log_execution_time, handle_exceptions
 from data_collector import DataCollector
 from analyzer import InformationAnalyzer
 from visualizer import DataVisualizer
@@ -21,28 +25,28 @@ from latex_compiler import LaTeXCompiler
 class ZhiLanSystem:
     """智览系统主类"""
     
-    def __init__(self, config_path=None):
+    def __init__(self, config: ConfigManager):
         """
         初始化智览系统
         
         Args:
-            config_path: 配置文件路径，默认为None（使用默认路径）
+            config: 配置管理器实例
         """
-        # 初始化配置和日志
-        self.config = get_config(config_path)
-        self.log_manager = LoggerManager(self.config)
-        self.logger = self.log_manager.get_logger()
+        self.config = config
+        self.logger = get_logger(f"智览系统v{config.version}")
         
         self.logger.info("=" * 60)
-        self.logger.info("智览信息聚合与分析系统启动")
+        self.logger.info(f"智览信息聚合与分析系统启动 v{config.version}")
+        self.logger.info(f"工作目录: {config.working_dir}")
+        self.logger.info(f"结果目录: {config.results_dir}")
         self.logger.info("=" * 60)
         
         # 初始化各个模块
-        self.collector = DataCollector(self.config, self.log_manager)
-        self.analyzer = InformationAnalyzer(self.config, self.log_manager)
-        self.visualizer = DataVisualizer(self.config, self.log_manager)
-        self.report_generator = ReportGenerator(self.config, self.log_manager)
-        self.latex_compiler = LaTeXCompiler(self.config, self.log_manager)
+        self.collector = DataCollector(self.config)
+        self.analyzer = InformationAnalyzer(self.config)
+        self.visualizer = DataVisualizer(self.config)
+        self.report_generator = ReportGenerator(self.config)
+        self.latex_compiler = LaTeXCompiler(self.config)
     
     @log_execution_time
     @handle_exceptions
@@ -110,14 +114,6 @@ class ZhiLanSystem:
             else:
                 self.logger.warning("PDF编译失败，但Markdown报告已生成")
         
-        # Step 7: 清理断点
-        self.logger.info("\n" + "=" * 60)
-        self.logger.info("清理断点数据")
-        self.logger.info("=" * 60)
-        
-        self.log_manager.clear_checkpoint('data_collection')
-        self.log_manager.clear_checkpoint('analysis')
-        
         # 完成
         self.logger.info("\n" + "=" * 60)
         self.logger.info("分析流程完成！")
@@ -156,11 +152,25 @@ class ZhiLanSystem:
         self.logger.info(summary)
 
 
-def main():
-    """主函数"""
+@hydra.main(version_base=None, config_path="../conf", config_name="config")
+def main(cfg: DictConfig):
+    """
+    主函数 - 使用 Hydra 进行配置管理
+    
+    Args:
+        cfg: Hydra 配置对象
+    """
     try:
+        # 打印配置信息
+        logger = logging.getLogger(f"智览系统v{cfg.project.version}")
+        logger.info("配置加载完成")
+        logger.debug(f"完整配置:\n{OmegaConf.to_yaml(cfg)}")
+        
+        # 初始化全局配置
+        config = init_config(cfg, Path.cwd())
+        
         # 创建系统实例
-        system = ZhiLanSystem()
+        system = ZhiLanSystem(config)
         
         # 运行分析流程
         system.run()

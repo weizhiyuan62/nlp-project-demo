@@ -36,18 +36,14 @@ ENV/
 *~
 .DS_Store
 
-# Logs
+# Logs (旧版)
 logs/*.log
-logs/checkpoints/*.json
 
-# Outputs
-outputs/*.md
-outputs/*.tex
-outputs/*.pdf
-outputs/*.aux
-outputs/*.out
-outputs/*.toc
-outputs/*.log
+# Hydra outputs（每次运行的输出）
+outputs/
+
+# 旧版 config 目录（已迁移到 conf/）
+config/config.yaml
 
 # Assets (generated images)
 assets/*.png

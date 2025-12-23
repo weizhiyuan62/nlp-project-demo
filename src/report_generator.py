@@ -3,6 +3,7 @@
 基于分析结果和可视化图表生成结构化的Markdown报告
 """
 
+import logging
 from typing import Dict, Any, List
 from datetime import datetime
 from pathlib import Path
@@ -11,16 +12,15 @@ from pathlib import Path
 class ReportGenerator:
     """报告生成器"""
     
-    def __init__(self, config_manager, logger_manager):
+    def __init__(self, config_manager):
         """
         初始化报告生成器
         
         Args:
             config_manager: 配置管理器实例
-            logger_manager: 日志管理器实例
         """
         self.config = config_manager
-        self.logger = logger_manager.get_logger()
+        self.logger = logging.getLogger(f"智览系统v{config_manager.version}")
         self.output_dir = config_manager.get_output_dir()
         self.report_style = config_manager.get_report_style()
         self.sections = config_manager.get_report_sections()
@@ -209,7 +209,7 @@ class ReportGenerator:
         if 'wordcloud' in visualization_paths:
             statistics_section += """### 热点词云图
 
-![热点词云](../assets/wordcloud.png)
+![热点词云](./assets/wordcloud.png)
 
 词云图展示了本次分析中出现频率最高的关键词，词汇大小代表其出现频次。
 
@@ -218,7 +218,7 @@ class ReportGenerator:
         if 'timeline' in visualization_paths:
             statistics_section += """### 时间趋势图
 
-![时间趋势](../assets/timeline.png)
+![时间趋势](./assets/timeline.png)
 
 时间趋势图展示了信息发布的时间分布，反映主题热度的变化。
 
@@ -227,7 +227,7 @@ class ReportGenerator:
         if 'source_distribution' in visualization_paths:
             statistics_section += """### 信息源分布
 
-![信息源分布](../assets/source_distribution.png)
+![信息源分布](./assets/source_distribution.png)
 
 信息源分布图展示了各数据源的贡献占比。
 
@@ -236,7 +236,7 @@ class ReportGenerator:
         if 'score_distribution' in visualization_paths:
             statistics_section += """### 质量评分分布
 
-![评分分布](../assets/score_distribution.png)
+![评分分布](./assets/score_distribution.png)
 
 质量评分分布图展示了筛选后信息的质量分布情况。
 

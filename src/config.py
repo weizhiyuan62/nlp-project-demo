@@ -1,77 +1,65 @@
 """
 配置管理模块
-负责加载和验证YAML配置文件
+使用 Hydra 进行统一配置管理，支持 OmegaConf
 """
 
-import yaml
-import os
+import logging
 from pathlib import Path
-from typing import Dict, Any, List
+from typing import Any, List, Optional
 from datetime import datetime, timedelta
+from omegaconf import DictConfig, OmegaConf
+
+
+def get_logger(name: str = "智览系统") -> logging.Logger:
+    """
+    获取统一的日志记录器
+    
+    Args:
+        name: 日志记录器名称
+        
+    Returns:
+        配置好的日志记录器
+    """
+    return logging.getLogger(name)
 
 
 class ConfigManager:
-    """配置管理器类"""
+    """配置管理器类 - Hydra版本"""
     
-    def __init__(self, config_path: str = None):
+    def __init__(self, cfg: DictConfig, working_dir: Optional[Path] = None):
         """
         初始化配置管理器
         
         Args:
-            config_path: 配置文件路径，默认为config/config.yaml
+            cfg: Hydra 配置对象
+            working_dir: 工作目录（Hydra运行目录）
         """
-        if config_path is None:
-            # 获取项目根目录
-            self.project_root = Path(__file__).parent.parent
-            config_path = self.project_root / "config" / "config.yaml"
-        else:
-            config_path = Path(config_path)
-            self.project_root = config_path.parent.parent
+        self.cfg = cfg
+        self.version = cfg.project.version
         
-        self.config_path = config_path
-        self.config = self._load_config()
-        self._validate_config()
+        # 工作目录（Hydra 自动设置的输出目录）
+        if working_dir is None:
+            working_dir = Path.cwd()
+        self.working_dir = Path(working_dir)
+        
+        # 项目根目录（src的父目录）
+        self.project_root = Path(__file__).parent.parent
+        
+        # 设置结果和资源目录
         self._setup_paths()
-    
-    def _load_config(self) -> Dict[str, Any]:
-        """
-        加载YAML配置文件
         
-        Returns:
-            配置字典
-        """
-        if not self.config_path.exists():
-            raise FileNotFoundError(f"配置文件不存在: {self.config_path}")
-        
-        with open(self.config_path, 'r', encoding='utf-8') as f:
-            config = yaml.safe_load(f)
-        
-        return config
-    
-    def _validate_config(self):
-        """验证配置文件的必要字段"""
-        required_sections = ['project', 'collection', 'api', 'analysis', 'report', 'output']
-        
-        for section in required_sections:
-            if section not in self.config:
-                raise ValueError(f"配置文件缺少必要部分: {section}")
-        
-        # 验证API密钥配置
-        if self.config['api']['llm']['api_key'] == "YOUR_LLM_API_KEY":
-            print("警告: 大模型API密钥未配置，某些功能可能无法使用")
+        # 获取日志记录器
+        self.logger = get_logger(f"智览系统v{self.version}")
     
     def _setup_paths(self):
         """设置项目路径"""
-        # 创建必要的目录
-        dirs_to_create = [
-            self.get_output_dir(),
-            self.get_assets_dir(),
-            self.get_log_dir(),
-            Path(self.project_root) / self.config.get('error_handling', {}).get('checkpoint', {}).get('checkpoint_dir', 'logs/checkpoints')
-        ]
+        # 结果目录（在 Hydra 运行目录下）
+        self.results_dir = self.working_dir / self.cfg.output.results_dir
+        self.results_dir.mkdir(parents=True, exist_ok=True)
         
-        for dir_path in dirs_to_create:
-            dir_path.mkdir(parents=True, exist_ok=True)
+        # 资源目录（在结果目录下）
+        self.assets_dir = self.results_dir / self.cfg.output.assets_dir
+        self.assets_dir.mkdir(parents=True, exist_ok=True)
     
     def get(self, *keys, default=None) -> Any:
         """
@@ -87,9 +75,11 @@ class ConfigManager:
         Example:
             config.get('api', 'llm', 'model')
         """
-        value = self.config
+        value = self.cfg
         for key in keys:
-            if isinstance(value, dict) and key in value:
+            if hasattr(value, key):
+                value = getattr(value, key)
+            elif isinstance(value, dict) and key in value:
                 value = value[key]
             else:
                 return default
@@ -97,7 +87,7 @@ class ConfigManager:
     
     def get_topics(self) -> List[str]:
         """获取关注的主题列表"""
-        return self.config['collection']['topics']
+        return list(self.cfg.collection.topics)
     
     def get_time_range(self) -> tuple:
         """
@@ -106,7 +96,7 @@ class ConfigManager:
         Returns:
             (start_date, end_date) 元组
         """
-        time_range = self.config['collection']['time_range']
+        time_range = self.cfg.collection.time_range
         today = datetime.now()
         
         if time_range == 'today':
@@ -120,11 +110,11 @@ class ConfigManager:
             end_date = today
         elif time_range == 'custom':
             start_date = datetime.strptime(
-                self.config['collection']['custom_start_date'], 
+                self.cfg.collection.custom_start_date, 
                 '%Y-%m-%d'
             )
             end_date = datetime.strptime(
-                self.config['collection']['custom_end_date'], 
+                self.cfg.collection.custom_end_date, 
                 '%Y-%m-%d'
             )
         else:
@@ -132,29 +122,35 @@ class ConfigManager:
         
         return start_date, end_date
     
-    def get_output_dir(self) -> Path:
-        """获取输出目录路径"""
-        return Path(self.project_root) / self.config['output']['output_dir']
+    def get_results_dir(self) -> Path:
+        """获取结果目录路径"""
+        return self.results_dir
     
     def get_assets_dir(self) -> Path:
         """获取资源目录路径"""
-        return Path(self.project_root) / self.config['output']['assets_dir']
+        return self.assets_dir
+    
+    def get_output_dir(self) -> Path:
+        """获取输出目录路径（兼容旧接口）"""
+        return self.results_dir
     
     def get_log_dir(self) -> Path:
         """获取日志目录路径"""
-        return Path(self.project_root) / self.config['logging']['log_dir']
+        return self.working_dir
     
-    def get_api_config(self, service: str) -> Dict[str, Any]:
+    def get_api_config(self, service: str) -> dict:
         """
         获取指定服务的API配置
         
         Args:
-            service: 服务名称 (如 'llm', 'bing_search', 'newsapi')
+            service: 服务名称 (bing_search, newsapi, arxiv, llm, image_generation)
             
         Returns:
             API配置字典
         """
-        return self.config['api'].get(service, {})
+        if hasattr(self.cfg.api, service):
+            return OmegaConf.to_container(getattr(self.cfg.api, service), resolve=True)
+        return {}
     
     def is_service_enabled(self, service: str) -> bool:
         """
@@ -166,52 +162,62 @@ class ConfigManager:
         Returns:
             是否启用
         """
-        service_config = self.config['api'].get(service, {})
-        return service_config.get('enabled', False)
+        api_config = self.get_api_config(service)
+        return api_config.get('enabled', False)
     
     def get_report_style(self) -> str:
         """获取报告风格"""
-        return self.config['report']['style']
+        return self.cfg.report.style
     
     def get_report_sections(self) -> List[str]:
-        """获取报告章节列表"""
-        return self.config['report']['sections']
+        """获取报告章节配置"""
+        return list(self.cfg.report.sections)
     
     def should_generate_visualization(self, viz_type: str) -> bool:
         """
         检查是否应该生成指定类型的可视化
         
         Args:
-            viz_type: 可视化类型
+            viz_type: 可视化类型 (wordcloud, timeline, source_distribution, topic_network)
             
         Returns:
             是否生成
         """
-        return self.config['report']['visualization'].get(viz_type, False)
+        return self.cfg.report.visualization.get(viz_type, False)
+    
+    def get_retry_config(self) -> dict:
+        """获取重试配置"""
+        return OmegaConf.to_container(self.cfg.error_handling.retry, resolve=True)
     
     def __repr__(self) -> str:
-        return f"ConfigManager(config_path={self.config_path})"
+        return f"ConfigManager(version={self.version}, working_dir={self.working_dir})"
 
 
-# 创建全局配置实例（可选）
-def get_config(config_path: str = None) -> ConfigManager:
+# 全局配置实例（在 Hydra 初始化后设置）
+_config_instance: Optional[ConfigManager] = None
+
+
+def init_config(cfg: DictConfig, working_dir: Optional[Path] = None) -> ConfigManager:
     """
-    获取配置管理器实例
+    初始化全局配置实例
     
     Args:
-        config_path: 配置文件路径
+        cfg: Hydra 配置对象
+        working_dir: 工作目录
         
     Returns:
-        ConfigManager实例
+        配置管理器实例
     """
-    return ConfigManager(config_path)
+    global _config_instance
+    _config_instance = ConfigManager(cfg, working_dir)
+    return _config_instance
 
 
-if __name__ == "__main__":
-    # 测试配置管理器
-    config = get_config()
-    print(f"项目名称: {config.get('project', 'name')}")
-    print(f"关注主题: {config.get_topics()}")
-    print(f"时间范围: {config.get_time_range()}")
-    print(f"报告风格: {config.get_report_style()}")
-    print(f"输出目录: {config.get_output_dir()}")
+def get_config() -> Optional[ConfigManager]:
+    """
+    获取全局配置实例
+    
+    Returns:
+        配置管理器实例
+    """
+    return _config_instance
