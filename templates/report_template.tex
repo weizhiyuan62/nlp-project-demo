@@ -1,0 +1,133 @@
+\documentclass[12pt,a4paper]{article}
+
+% ========== 基本包 ==========
+\usepackage[UTF8]{ctex}
+\usepackage{geometry}
+\usepackage{graphicx}
+\usepackage{hyperref}
+\usepackage{xcolor}
+\usepackage{fancyhdr}
+\usepackage{titlesec}
+\usepackage{enumitem}
+\usepackage{listings}
+\usepackage{float}
+
+% ========== 页面设置 ==========
+\geometry{
+    left=2.5cm,
+    right=2.5cm,
+    top=3cm,
+    bottom=3cm
+}
+
+% ========== 超链接设置 ==========
+\hypersetup{
+    colorlinks=true,
+    linkcolor=blue,
+    urlcolor=blue,
+    citecolor=blue,
+    pdfauthor={智览系统},
+    pdftitle={智览信息分析报告}
+}
+
+% ========== 页眉页脚 ==========
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[L]{\small 智览信息分析报告}
+\fancyhead[R]{\small \today}
+\fancyfoot[C]{\thepage}
+\renewcommand{\headrulewidth}{0.4pt}
+\renewcommand{\footrulewidth}{0pt}
+
+% ========== 标题格式 ==========
+\titleformat{\section}
+    {\Large\bfseries\color{blue!70!black}}
+    {\thesection}
+    {1em}
+    {}
+    [\vspace{0.5ex}\titlerule]
+
+\titleformat{\subsection}
+    {\large\bfseries\color{blue!50!black}}
+    {\thesubsection}
+    {1em}
+    {}
+
+\titleformat{\subsubsection}
+    {\normalsize\bfseries}
+    {\thesubsubsection}
+    {1em}
+    {}
+
+% ========== 列表格式 ==========
+\setlist[itemize]{
+    leftmargin=*,
+    itemsep=0.5em,
+    parsep=0pt
+}
+
+\setlist[enumerate]{
+    leftmargin=*,
+    itemsep=0.5em,
+    parsep=0pt
+}
+
+% ========== 图片设置 ==========
+\graphicspath{{../assets/}}
+\DeclareGraphicsExtensions{.pdf,.png,.jpg,.jpeg}
+
+% ========== 代码块设置 ==========
+\lstset{
+    basicstyle=\ttfamily\small,
+    breaklines=true,
+    frame=single,
+    backgroundcolor=\color{gray!10}
+}
+
+% ========== 文档开始 ==========
+\begin{document}
+
+% 标题页
+\begin{titlepage}
+    \centering
+    \vspace*{2cm}
+    
+    {\Huge\bfseries 智览信息分析报告\par}
+    \vspace{1cm}
+    {\Large 基于大模型的智能信息聚合与分析\par}
+    
+    \vspace{2cm}
+    
+    \begin{figure}[h]
+        \centering
+        % 可以添加项目Logo
+        % \includegraphics[width=0.3\textwidth]{logo.png}
+    \end{figure}
+    
+    \vfill
+    
+    {\large
+    \textbf{生成时间}: \today\\[0.5em]
+    \textbf{系统版本}: 1.0.0\\[0.5em]
+    \textbf{技术支持}: 智览系统
+    \par}
+    
+    \vspace{1cm}
+\end{titlepage}
+
+% 目录
+\tableofcontents
+\newpage
+
+% 正文内容
+{{ content }}
+
+% 文档结束标记
+\vfill
+\begin{center}
+    \hrule
+    \vspace{0.5em}
+    {\small 本报告由智览系统自动生成 | \today}
+\end{center}
+
+\end{document}
