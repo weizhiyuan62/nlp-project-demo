@@ -178,31 +178,36 @@ report:
 ## 项目结构
 
 ```
-my-project-demo/
-├── conf/                # Hydra 配置目录
-│   ├── config.yaml      # 主配置文件
-│   └── api/             # API配置
-│       └── default.yaml # API密钥配置
-├── src/                 # 源代码
-│   ├── main.py         # 主程序入口 (@hydra.main)
-│   ├── config.py       # 配置管理模块 (Hydra + OmegaConf)
-│   ├── logger.py       # 日志和错误处理
-│   ├── data_collector.py    # 数据采集模块
-│   ├── analyzer.py     # 智能分析模块
-│   ├── visualizer.py   # 数据可视化模块
-│   ├── report_generator.py  # 报告生成模块
-│   └── latex_compiler.py    # LaTeX编译模块
-├── templates/           # LaTeX模板
-│   └── report_template.tex
-├── outputs/            # Hydra 输出目录 (按日期分类)
+nlp-project-demo/
+├── conf/                    # Hydra 配置目录
+│   ├── config.yaml          # 主配置文件
+│   └── api/                 # API配置
+│       └── default.yaml     # API密钥配置
+├── src/                     # 源代码
+│   ├── main.py              # 主程序入口 (@hydra.main)
+│   ├── config.py            # 配置管理模块 (Hydra + OmegaConf)
+│   ├── logger.py            # 日志和错误处理（装饰器）
+│   ├── data_collector.py    # 多源数据采集模块
+│   ├── analyzer.py          # LLM智能分析模块（多线程并行评分）
+│   ├── visualizer.py        # 数据可视化模块
+│   ├── report_generator.py  # Markdown报告生成模块
+│   └── latex_compiler.py    # LaTeX/PDF编译模块
+├── templates/               # LaTeX模板
+│   └── report_template.tex  # PDF报告模板
+├── proposal/                # 项目计划书
+│   └── proposal.tex         # LaTeX格式计划书
+├── outputs/                 # Hydra 输出目录 (自动按日期分类)
 │   └── YYYY-MM-DD/
 │       └── HH-MM-SS/
-│           ├── .hydra/     # 配置备份
-│           ├── zhilan.log  # 运行日志
-│           └── results/    # 结果目录
-├── requirements.txt    # 依赖包列表
-├── proposal.tex        # 项目计划书
-└── README.md          # 项目说明
+│           ├── .hydra/      # Hydra配置快照
+│           ├── zhilan.log   # 运行日志
+│           └── results/     # 结果目录
+│               ├── assets/  # 可视化图表
+│               ├── report_*.md   # Markdown报告
+│               └── report_*.pdf  # PDF报告
+├── requirements.txt         # Python依赖包列表
+├── report.md                # 项目演示报告
+└── README.md                # 项目说明文档
 ```
 
 ## 日志系统

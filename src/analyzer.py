@@ -146,11 +146,11 @@ class InformationAnalyzer:
                         item_copy.update(batch_scores[j])
                     else:
                         # 如果LLM返回结果不足，使用默认评分
-                        item_copy['score'] = 0.5
-                        item_copy['relevance'] = 0.65
-                        item_copy['importance'] = 0.5
-                        item_copy['timeliness'] = 0.5
-                        item_copy['reliability'] = 0.5
+                        item_copy['score'] = 0.6
+                        item_copy['relevance'] = 0.6
+                        item_copy['importance'] = 0.6
+                        item_copy['timeliness'] = 0.6
+                        item_copy['reliability'] = 0.6
                     scored_batch.append(item_copy)
                 
                 with results_lock:
@@ -312,6 +312,9 @@ score = 0.3*relevance + 0.3*importance + 0.2*timeliness + 0.2*reliability
 ]
 """
         return prompt
+        # TODO: 可选添加功能项: use the weights from config if needed, and locally compute the final score.
+        
+        # 
     
     def _extract_key_points(self, items: List[Dict[str, Any]], topics: List[str]) -> List[str]:
         """
