@@ -4,23 +4,23 @@
 [![Hydra](https://img.shields.io/badge/config-Hydra-89b8cd)](https://hydra.cc/)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
-## 📋 项目简介
+## 项目简介
 
 **智览**是一个基于大语言模型的智能信息聚合与分析系统，能够自动从多个数据源采集信息，通过AI进行智能筛选和分析，并生成高质量的可视化分析报告。
 
 ### 主要功能
 
-- **多源信息采集**: 整合Bing Search、NewsAPI、arXiv等多个数据源  
+- **多源信息采集**: 整合Google Search(SerpAPI代理)、NewsAPI、arXiv等多个数据源  
 - **智能分析筛选**: 使用大模型进行多维度评分（相关性、重要性、时效性、可靠性）  
 - **数据可视化**: 自动生成词云图、时间趋势图、信息源分布图等  
 - **报告自动生成**: 生成结构化的Markdown和PDF格式报告  
 - **Hydra配置管理**: 使用Hydra统一管理配置和日志，支持多次运行结果分类存储
 
-## 🚀 快速开始
+## 快速开始
 
 ### 环境要求
 
-- Python 3.8+
+- Python 3.8+, 推荐使用3.10
 - LaTeX环境（用于生成PDF，可选）
   - macOS: `brew install --cask mactex`
   - Linux: `sudo apt-get install texlive-full`
@@ -31,25 +31,30 @@
 
 ```bash
 git clone <repository-url>
-cd my-project-demo
+cd nlp-project-demo
 ```
 
 2. **conda虚拟环境配置**
 ```bash
-conda create -n zhilan python=3.10
+conda create -n zhilan python=3.10 -y
 conda activate zhilan
 pip install -r requirements.txt
 ```
 
 3. **配置API密钥**
 
-编辑 `conf/api/default.yaml` 文件，填入你的API密钥：
+编辑 [conf/api/default.yaml](conf/api/default.yaml) 文件，填入你的API密钥：
 
 ```yaml
-# 搜索引擎配置
-bing_search:
+# 搜索引擎配置（SerpAPI 代理的 Google 搜索）
+serpapi_google:
   enabled: true
-  api_key: "YOUR_BING_SEARCH_API_KEY"
+  api_key: "YOUR_SERPAPI_KEY"
+  google_domain: "google.com"
+  gl: "us"
+  hl: "zh-cn"
+  num: 10
+  max_results: 50
 
 # 新闻API配置
 newsapi:
@@ -66,17 +71,17 @@ llm:
 ### 运行系统
 
 ```bash
-cd src
-python main.py
+python src/main.py
 ```
 
 ### 命令行参数覆盖
 
 Hydra支持通过命令行覆盖配置：
+或者直接修改conf中对应的配置文件
 
 ```bash
 # 修改主题
-python main.py collection.topics="[大模型,ChatGPT]"
+python main.py collection.topics="[大模型, ChatGPT]"
 
 # 修改时间范围
 python main.py collection.time_range=last_week
@@ -88,7 +93,7 @@ python main.py report.style=academic
 python main.py collection.topics="[人工智能]" report.style=brief
 ```
 
-## 📖 配置说明
+## 配置说明
 
 ### Hydra 配置结构
 
@@ -155,10 +160,10 @@ report:
 
 ### 获取API密钥
 
-#### Bing Search API
-1. 访问 [Azure Portal](https://portal.azure.com/)
-2. 创建"Bing Search v7"资源
-3. 在"密钥和终结点"中获取API密钥
+#### SerpAPI (Google Search)
+1. 访问 [SerpAPI 官网](https://serpapi.com/)
+2. 注册并获取 `api_key`
+3. 参考官方文档配置参数：`google_domain`、`gl`、`hl` 等
 
 #### NewsAPI
 1. 访问 [NewsAPI官网](https://newsapi.org/)
@@ -170,7 +175,7 @@ report:
 2. 开通服务
 3. 获取API-KEY
 
-## 🏗️ 项目结构
+## 项目结构
 
 ```
 my-project-demo/
@@ -200,7 +205,7 @@ my-project-demo/
 └── README.md          # 项目说明
 ```
 
-## 📊 日志系统
+## 日志系统
 
 系统使用 Hydra 统一管理日志，每个模块使用统一的 logger：
 
@@ -211,7 +216,7 @@ logger = logging.getLogger(f"智览系统v{version}")
 
 日志输出到每次运行的目录：`outputs/YYYY-MM-DD/HH-MM-SS/zhilan.log`
 
-## 🔧 高级功能
+## 高级功能
 
 ### 自动重试
 
@@ -231,7 +236,7 @@ def api_call():
 - **detailed**: 深度分析风格，详细阐述（默认）
 - **academic**: 学术刊物风格，严谨规范
 
-## 🐛 常见问题
+## Q&A
 
 ### Q1: 安装依赖时出错？
 A: 建议使用虚拟环境，确保Python版本≥3.8
@@ -245,7 +250,7 @@ A: 确保已安装LaTeX环境，或在配置中禁用PDF生成
 ### Q4: 中文显示乱码？
 A: macOS需要安装中文字体，可以修改visualizer.py中的字体设置
 
-## 📝 开发计划
+## 开发计划
 
 - [x] 多源信息采集
 - [x] 智能分析筛选
@@ -258,26 +263,26 @@ A: macOS需要安装中文字体，可以修改visualizer.py中的字体设置
 - [ ] 定时任务调度
 - [ ] 数据库存储
 
-## 📄 许可证
+## 许可证
 
 本项目采用 MIT 许可证 - 详见 [LICENSE](LICENSE) 文件
 
-## 👥 贡献者
+## 贡献者
 
 - 魏知原 (2300012875)
 
-## 🙏 致谢
+## 致谢
 
 - 感谢阿里云通义千问提供的大模型API
 - 感谢各数据源平台提供的开放API
 - 感谢开源社区的各类工具和库
 
-## 📧 联系方式
+## 联系方式
 
 如有问题或建议，请通过以下方式联系：
 
 - Issue: 在GitHub上提交Issue
-- Email: [your-email@example.com]
+- Email: [weizhiyuan12875@stu.pku.edu.cn]
 
 ---
 

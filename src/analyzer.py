@@ -8,7 +8,15 @@ import json
 import requests
 from typing import List, Dict, Any, Tuple
 from datetime import datetime
-import tqdm
+from concurrent.futures import ThreadPoolExecutor, as_completed
+import threading
+
+# 美观的多进度条显示
+from rich.progress import Progress, SpinnerColumn, BarColumn, TextColumn, TaskProgressColumn, TimeElapsedColumn, TimeRemainingColumn
+from rich.console import Console
+from rich.live import Live
+from rich.table import Table
+from rich.panel import Panel
 
 
 class InformationAnalyzer:
@@ -84,7 +92,7 @@ class InformationAnalyzer:
     
     def _score_items_batch(self, items: List[Dict[str, Any]], topics: List[str]) -> List[Dict[str, Any]]:
         """
-        批量对信息进行评分
+        批量对信息进行评分（多线程并行处理，带美观多进度条显示）
         
         Args:
             items: 信息列表
@@ -93,36 +101,156 @@ class InformationAnalyzer:
         Returns:
             带评分的信息列表
         """
-        self.logger.info("开始批量评分...")
-        scored_items = []
-        batch_size = 10  # 每批处理10条信息
+        self.logger.info("开始批量评分（多线程并行）...")
         
-        for i in tqdm.tqdm(range(0, len(items), batch_size), desc="评分进度:(已评分数据/总数据)"):
+        batch_size = 10  # 每批处理10条信息
+        max_workers = 5  # 并行线程数，可根据 API 限流调整
+        
+        # 将 items 分成多个 batch
+        batches = []
+        for i in range(0, len(items), batch_size):
             batch = items[i:i+batch_size]
+            batches.append((i, batch))  # 记录原始索引和批次数据
+        
+        total_batches = len(batches)
+        
+        # 用于存放结果的字典，按原始索引排序
+        results_dict: Dict[int, List[Dict[str, Any]]] = {}
+        results_lock = threading.Lock()
+        
+        # 用于跟踪每个 worker 的状态
+        worker_status: Dict[int, Dict[str, Any]] = {}
+        status_lock = threading.Lock()
+        
+        console = Console()
+        
+        def score_single_batch(batch_info: Tuple[int, List[Dict[str, Any]]], worker_id: int, 
+                              progress: Progress, task_ids: Dict[int, Any], overall_task: Any) -> None:
+            """线程任务：评分单个批次"""
+            batch_start_idx, batch = batch_info
+            batch_num = batch_start_idx // batch_size + 1
+            
+            # 更新 worker 进度条描述
+            with status_lock:
+                worker_status[worker_id] = {'batch': batch_num, 'status': '处理中'}
+            progress.update(task_ids[worker_id], description=f"[cyan]Worker {worker_id+1}[/] 批次 {batch_num}/{total_batches}")
+            progress.start_task(task_ids[worker_id])
+            
             try:
                 batch_scores = self._call_llm_for_scoring(batch, topics)
                 
-                # 合并评分结果
+                scored_batch = []
                 for j, item in enumerate(batch):
+                    item_copy = item.copy()
                     if j < len(batch_scores):
-                        item.update(batch_scores[j])
+                        item_copy.update(batch_scores[j])
                     else:
                         # 如果LLM返回结果不足，使用默认评分
-                        item['score'] = 0.5
-                        item['relevance'] = 0.5
-                        item['importance'] = 0.5
-                        item['timeliness'] = 0.5
-                        item['reliability'] = 0.5
-                    scored_items.append(item)
+                        item_copy['score'] = 0.5
+                        item_copy['relevance'] = 0.65
+                        item_copy['importance'] = 0.5
+                        item_copy['timeliness'] = 0.5
+                        item_copy['reliability'] = 0.5
+                    scored_batch.append(item_copy)
                 
+                with results_lock:
+                    results_dict[batch_start_idx] = scored_batch
+                
+                # 更新 worker 状态为完成
+                with status_lock:
+                    worker_status[worker_id] = {'batch': batch_num, 'status': '完成'}
+                progress.update(task_ids[worker_id], completed=100, 
+                              description=f"[green]Worker {worker_id+1}[/] 批次 {batch_num} ✓")
+                    
             except Exception as e:
-                self.logger.error(f"批量评分失败: {e}")
+                self.logger.error(f"批次评分失败 (起始索引 {batch_start_idx}): {e}")
                 # 使用默认评分
+                scored_batch = []
                 for item in batch:
-                    item['score'] = 0.5
-                    scored_items.append(item)
+                    item_copy = item.copy()
+                    item_copy['score'] = 0.5
+                    item_copy['relevance'] = 0.5
+                    item_copy['importance'] = 0.5
+                    item_copy['timeliness'] = 0.5
+                    item_copy['reliability'] = 0.5
+                    scored_batch.append(item_copy)
+                with results_lock:
+                    results_dict[batch_start_idx] = scored_batch
+                
+                with status_lock:
+                    worker_status[worker_id] = {'batch': batch_num, 'status': '失败'}
+                progress.update(task_ids[worker_id], completed=100,
+                              description=f"[red]Worker {worker_id+1}[/] 批次 {batch_num} ✗")
+            
+            # 更新总进度
+            progress.advance(overall_task)
         
-        self.logger.info(f"完成 {len(scored_items)} 条信息的评分")
+        # 使用 rich Progress 显示多进度条
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[bold blue]{task.description}"),
+            BarColumn(bar_width=30),
+            TaskProgressColumn(),
+            TimeElapsedColumn(),
+            console=console,
+            transient=False,
+        ) as progress:
+            
+            # 创建总进度任务
+            overall_task = progress.add_task(
+                f"[bold yellow]📊 总进度 ({len(items)} 条数据, {total_batches} 批次)[/]", 
+                total=total_batches
+            )
+            
+            # 为每个 worker 创建进度条
+            task_ids: Dict[int, Any] = {}
+            for i in range(max_workers):
+                task_id = progress.add_task(
+                    f"[dim]Worker {i+1}[/] 等待中...", 
+                    total=100,
+                    start=False
+                )
+                task_ids[i] = task_id
+            
+            # 使用线程池并行处理
+            with ThreadPoolExecutor(max_workers=max_workers) as executor:
+                # 分配任务给 workers
+                futures = []
+                for idx, batch_info in enumerate(batches):
+                    worker_id = idx % max_workers
+                    future = executor.submit(
+                        score_single_batch, 
+                        batch_info, 
+                        worker_id, 
+                        progress, 
+                        task_ids, 
+                        overall_task
+                    )
+                    futures.append(future)
+                
+                # 等待所有任务完成
+                for future in as_completed(futures):
+                    try:
+                        future.result()
+                    except Exception as e:
+                        self.logger.error(f"线程执行异常: {e}")
+        
+        # 按原始顺序合并结果
+        scored_items = []
+        for batch_start_idx in sorted(results_dict.keys()):
+            scored_items.extend(results_dict[batch_start_idx])
+        
+        # 打印完成统计
+        console.print(Panel(
+            f"[bold green]✅ 评分完成[/]\n"
+            f"• 总数据量: {len(scored_items)} 条\n"
+            f"• 批次数量: {total_batches} 批\n"
+            f"• 并行线程: {max_workers} 个",
+            title="[bold]评分统计[/]",
+            border_style="green"
+        ))
+        
+        self.logger.info(f"完成 {len(scored_items)} 条信息的并行评分")
         return scored_items
     
     def _call_llm_for_scoring(self, items: List[Dict[str, Any]], topics: List[str]) -> List[Dict[str, Any]]:

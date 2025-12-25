@@ -1,6 +1,6 @@
 """
 多源信息采集模块
-支持从Bing Search、NewsAPI、arXiv等多个数据源采集信息
+支持从SerpAPI代理的Google搜索、NewsAPI、arXiv等多个数据源采集信息
 """
 
 import logging
@@ -12,6 +12,13 @@ from urllib.parse import quote, urlencode
 import hashlib
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from bs4 import BeautifulSoup
+from dateutil import parser as date_parser
+
+try:
+    # SerpAPI 官方 Python SDK
+    from serpapi import GoogleSearch
+except Exception:
+    GoogleSearch = None
 
 
 class DataCollector:
@@ -54,8 +61,8 @@ class DataCollector:
             
             # 提交各个数据源的采集任务
             for topic in topics:
-                if self.config.is_service_enabled('bing_search'):
-                    futures.append(executor.submit(self.collect_from_bing, topic, start_date, end_date))
+                if self.config.is_service_enabled('serpapi_google'):
+                    futures.append(executor.submit(self.collect_from_serpapi_google, topic, start_date, end_date))
                 
                 if self.config.is_service_enabled('newsapi'):
                     futures.append(executor.submit(self.collect_from_newsapi, topic, start_date, end_date))
@@ -77,120 +84,107 @@ class DataCollector:
         
         return unique_items
     
-    def collect_from_bing(self, query: str, start_date: datetime, end_date: datetime) -> List[Dict[str, Any]]:
+    def collect_from_serpapi_google(self, query: str, start_date: datetime, end_date: datetime) -> List[Dict[str, Any]]:
         """
-        从Bing搜索网页采集信息（模拟浏览器访问）
-        
+        使用 SerpAPI 的 Google 搜索代理采集信息
+
         Args:
             query: 搜索查询
             start_date: 开始日期
             end_date: 结束日期
-            
+
         Returns:
             采集到的信息列表
         """
-        self.logger.info(f"从Bing搜索采集（网页爬取）: {query}")
-        
-        # 构建搜索URL
-        search_url = "https://www.bing.com/search"
-        
-        # 模拟浏览器的HTTP头
-        headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-            'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
-            'Accept-Encoding': 'gzip, deflate, br',
-            'Connection': 'keep-alive',
-            'Upgrade-Insecure-Requests': '1'
-        }
-        
-        items = []
-        
+        self.logger.info(f"从 Google (SerpAPI) 采集: {query}")
+
+        api_config = self.config.get_api_config('serpapi_google')
+        api_key = api_config.get('api_key')
+        google_domain = api_config.get('google_domain', 'google.com')
+        gl = api_config.get('gl', 'us')
+        hl = api_config.get('hl', 'zh-cn')
+        max_results = int(api_config.get('max_results', 50))
+        page_size = int(api_config.get('num', 10))
+
+        if not api_key or api_key == "YOUR_SERPAPI_KEY":
+            self.logger.warning("SerpAPI密钥未配置，跳过")
+            return []
+
+        if GoogleSearch is None:
+            self.logger.error("未找到 serpapi 库，请安装 google-search-results")
+            return []
+
+        # 生成时间过滤参数 tbs
+        tbs = self._build_google_tbs(start_date, end_date)
+
+        items: List[Dict[str, Any]] = []
+        start_index = 0
+
         try:
-            # 分批次请求（每次获取10条结果）
-            max_results = 50
-            for offset in range(0, max_results, 10):
+            while start_index < max_results:
                 params = {
-                    'q': query,
-                    'first': offset + 1,  # Bing的分页参数
-                    'FORM': 'PERE',
-                    'setlang': 'zh-CN'
+                    "engine": "google",
+                    "q": query,
+                    "api_key": api_key,
+                    "google_domain": google_domain,
+                    "gl": gl,
+                    "hl": hl,
+                    "num": page_size,
+                    "start": start_index,
                 }
-                
-                # 添加日期过滤（如果适用）
-                freshness = self._get_freshness_param(start_date, end_date)
-                if freshness:
-                    params['filters'] = f'ex1:"ez{freshness.lower()}"'
-                
-                response = requests.get(search_url, params=params, headers=headers, timeout=30)
-                response.raise_for_status()
-                
-                # 解析HTML
-                soup = BeautifulSoup(response.text, 'html.parser')
-                
-                # 查找搜索结果
-                # Bing的搜索结果通常在 class="b_algo" 的元素中
-                results = soup.find_all('li', class_='b_algo')
-                
-                if not results:
-                    self.logger.warning(f"第 {offset//10 + 1} 页未找到搜索结果")
+                if tbs:
+                    params["tbs"] = tbs
+
+                search = GoogleSearch(params)
+                result = search.get_dict()
+
+                organic = result.get("organic_results", [])
+                if not organic:
                     break
-                
-                for result in results:
+
+                for r in organic:
                     try:
-                        # 提取标题和链接
-                        title_elem = result.find('h2')
-                        if not title_elem:
-                            continue
-                        
-                        link_elem = title_elem.find('a')
-                        if not link_elem:
-                            continue
-                        
-                        title = link_elem.get_text(strip=True)
-                        url = link_elem.get('href', '')
-                        
-                        # 提取摘要
-                        snippet_elem = result.find('p') or result.find('div', class_='b_caption')
-                        snippet = snippet_elem.get_text(strip=True) if snippet_elem else ''
-                        
-                        # 提取日期（如果有）
-                        date_elem = result.find('span', class_='news_dt')
-                        date_published = date_elem.get_text(strip=True) if date_elem else datetime.now().isoformat()
-                        
-                        # 提取来源网站
-                        cite_elem = result.find('cite')
-                        source_name = cite_elem.get_text(strip=True).split('/')[0] if cite_elem else 'Unknown'
-                        
+                        title = r.get("title", "")
+                        url = r.get("link", "")
+                        snippet = r.get("snippet", "")
+                        date_str = r.get("date") or r.get("published_on")
+
+                        # 解析日期（如果可能）
+                        if isinstance(date_str, str):
+                            try:
+                                # SerpAPI 可能返回相对时间，如 "2 days ago"，这里兜底为当前时间
+                                parsed = date_parser.parse(date_str, fuzzy=True)
+                                date_published = parsed.isoformat()
+                            except Exception:
+                                date_published = datetime.now().isoformat()
+                        else:
+                            date_published = datetime.now().isoformat()
+
+                        source_name = r.get("source") or r.get("displayed_link", "Unknown")
+
                         item = {
-                            'title': title,
-                            'url': url,
-                            'snippet': snippet,
-                            'date_published': date_published,
-                            'source': 'Bing Search',
-                            'source_name': source_name
+                            "title": title,
+                            "url": url,
+                            "snippet": snippet,
+                            "date_published": date_published,
+                            "source": "Google (SerpAPI)",
+                            "source_name": source_name,
                         }
                         items.append(item)
-                        
                     except Exception as e:
-                        self.logger.warning(f"解析单个搜索结果失败: {e}")
+                        self.logger.warning(f"解析 SerpAPI 结果失败: {e}")
                         continue
-                
-                # 添加延迟，避免请求过快
-                time.sleep(1)
-                
-                # 如果结果少于10条，说明已经是最后一页
-                if len(results) < 10:
+
+                start_index += page_size
+                time.sleep(0.8)
+
+                if len(organic) < page_size:
                     break
-            
-            self.logger.info(f"从Bing采集到 {len(items)} 条信息")
+
+            self.logger.info(f"从 Google (SerpAPI) 采集到 {len(items)} 条信息")
             return items
-            
-        except requests.exceptions.RequestException as e:
-            self.logger.error(f"Bing搜索网页访问失败: {e}")
-            return []
         except Exception as e:
-            self.logger.error(f"解析Bing搜索结果失败: {e}")
+            self.logger.error(f"SerpAPI 调用失败: {e}")
             return []
     
     def collect_from_newsapi(self, query: str, start_date: datetime, end_date: datetime) -> List[Dict[str, Any]]:
@@ -500,27 +494,29 @@ class DataCollector:
         
         return unique_items
     
-    def _get_freshness_param(self, start_date: datetime, end_date: datetime) -> str:
+    def _build_google_tbs(self, start_date: datetime, end_date: datetime) -> str:
         """
-        根据日期范围生成Bing的freshness参数
-        
-        Args:
-            start_date: 开始日期
-            end_date: 结束日期
-            
-        Returns:
-            freshness参数值
+        根据日期范围生成 Google 搜索的 tbs 参数
+
+        - 若为短范围，使用 qdr:d/w/m/y
+        - 若为自定义范围，使用 cdr:1,cd_min:MM/DD/YYYY,cd_max:MM/DD/YYYY
         """
         days_diff = (end_date - start_date).days
-        
+
+        # 自定义范围（超过 31 天则使用 cdr）
+        if days_diff > 31:
+            cd_min = start_date.strftime('%m/%d/%Y')
+            cd_max = end_date.strftime('%m/%d/%Y')
+            return f"cdr:1,cd_min:{cd_min},cd_max:{cd_max}"
+
         if days_diff <= 1:
-            return 'Day'
+            return 'qdr:d'
         elif days_diff <= 7:
-            return 'Week'
+            return 'qdr:w'
         elif days_diff <= 30:
-            return 'Month'
+            return 'qdr:m'
         else:
-            return 'Year'
+            return 'qdr:y'
 
 
 if __name__ == "__main__":

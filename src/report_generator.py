@@ -48,6 +48,9 @@ class ReportGenerator:
         # 标题和元数据
         report_content.append(self._generate_header(topics, analysis_result))
         
+        # markdown TOC add
+        report_content.append('[TOC]\n')
+        
         # 各个章节
         for section in self.sections:
             if section == 'executive_summary':
@@ -83,15 +86,22 @@ class ReportGenerator:
     def _generate_header(self, topics: List[str], analysis_result: Dict[str, Any]) -> str:
         """生成报告头部"""
         statistics = analysis_result.get('statistics', {})
+        topic_str = ' | '.join(topics)
+        gen_time = datetime.now().strftime('%Y年%m月%d日 %H:%M')
+        style_name = self._get_style_name()
+        total_count = statistics.get('total_count', 0)
+        avg_score = statistics.get('average_score', 0)
         
         header = f"""# 智览信息分析报告
 
-## 主题: {' | '.join(topics)}
+> **主题**: {topic_str}
 
-**生成时间**: {datetime.now().strftime('%Y年%m月%d日 %H:%M')}  
-**报告风格**: {self._get_style_name()}  
-**分析数量**: {statistics.get('total_count', 0)} 条高质量信息  
-**平均评分**: {statistics.get('average_score', 0):.2f}
+| 项目 | 内容 |
+|:-----|:-----|
+| 生成时间 | {gen_time} |
+| 报告风格 | {style_name} |
+| 分析数量 | {total_count} 条高质量信息 |
+| 平均评分 | {avg_score:.2f} / 1.0 |
 
 ---
 """
@@ -102,24 +112,34 @@ class ReportGenerator:
         key_points = analysis_result.get('key_points', [])
         statistics = analysis_result.get('statistics', {})
         
+        total_count = statistics.get('total_count', 0)
+        source_count = len(statistics.get('source_distribution', {}))
+        date_count = len(statistics.get('date_distribution', {}))
+        avg_score = statistics.get('average_score', 0)
+        
         summary = """## 一、执行摘要
 
 本报告基于多源信息采集和智能分析，对当前关注主题进行了全面梳理。通过大语言模型的深度分析，我们识别出以下核心要点：
 
 """
         
+        # 关键要点列表
         if key_points:
             for i, point in enumerate(key_points, 1):
                 summary += f"{i}. {point}\n"
         else:
-            summary += "暂无关键要点提取。\n"
+            summary += "*暂无关键要点提取。*\n"
         
+        # 信息概览表格
         summary += f"""
-**信息概览**:
-- 共采集分析 {statistics.get('total_count', 0)} 条高质量信息
-- 覆盖 {len(statistics.get('source_distribution', {}))} 个主要信息源
-- 时间跨度 {len(statistics.get('date_distribution', {}))} 天
-- 平均质量评分 {statistics.get('average_score', 0):.2f}/1.0
+### 信息概览
+
+| 指标 | 数值 |
+|:-----|-----:|
+| 高质量信息数 | {total_count} 条 |
+| 信息源数量 | {source_count} 个 |
+| 时间跨度 | {date_count} 天 |
+| 平均质量评分 | {avg_score:.2f} / 1.0 |
 """
         
         return summary
@@ -138,21 +158,24 @@ class ReportGenerator:
 """
         
         for i, item in enumerate(top_items, 1):
-            title = item.get('title', '无标题')
-            snippet = item.get('snippet', '无摘要')[:150]
+            title = item.get('title', '无标题').strip()
+            snippet = item.get('snippet', '').strip()
+            # 截取摘要，保证完整句子
+            if len(snippet) > 150:
+                snippet = snippet[:150].rsplit('。', 1)[0]
+                if not snippet.endswith('。'):
+                    snippet += '...'
             source = item.get('source_name', '未知来源')
             score = item.get('score', 0)
-            url = item.get('url', '')
+            url = item.get('url', '#')
             
             events += f"""### {i}. {title}
 
-**评分**: {score:.2f} | **来源**: {source}
+> **评分**: `{score:.2f}` &nbsp;|&nbsp; **来源**: {source}
 
-{snippet}...
+{snippet if snippet else '*暂无摘要*'}
 
-[查看详情]({url})
-
----
+🔗 [查看原文]({url})
 
 """
         
@@ -161,15 +184,21 @@ class ReportGenerator:
     def _generate_overall_analysis(self, analysis_result: Dict[str, Any], topics: List[str]) -> str:
         """生成总体分析章节"""
         overall_analysis = analysis_result.get('overall_analysis', '')
+        topic_str = '、'.join(topics)
         
         section = f"""## 三、智览总体分析
 
-> 基于以上采集的信息和重点事件，智览系统对「{"、".join(topics)}」进行的深度总体分析如下：
+> 基于以上采集的信息和重点事件，智览系统对「{topic_str}」进行的深度总体分析如下：
 
-{overall_analysis if overall_analysis else '暂无总体分析数据。'}
-
----
 """
+        
+        if overall_analysis:
+            # 确保 LLM 返回的分析内容格式统一，将可能的 ## 标题降级为 ###
+            formatted = overall_analysis.replace('## ', '### ').replace('# ', '### ')
+            section += formatted
+        else:
+            section += '*暂无总体分析数据。*'
+        
         return section
     
     def _generate_trend_analysis(self, analysis_result: Dict[str, Any]) -> str:
@@ -177,108 +206,116 @@ class ReportGenerator:
         statistics = analysis_result.get('statistics', {})
         date_dist = statistics.get('date_distribution', {})
         
-        trend = """## 三、趋势分析
+        trend = """## 四、趋势分析
 
-### 信息发布趋势
+### 4.1 信息发布趋势
 
 """
         
         if date_dist:
             sorted_dates = sorted(date_dist.items())
-            
-            # 找出发布高峰
             max_date = max(sorted_dates, key=lambda x: x[1])
             min_date = min(sorted_dates, key=lambda x: x[1])
+            trend_direction = '📈 上升' if sorted_dates[-1][1] > sorted_dates[0][1] else '📉 下降'
             
             trend += f"""基于时间序列分析，我们观察到以下趋势：
 
-- **发布高峰**: {max_date[0]} ({max_date[1]} 条信息)
-- **发布低谷**: {min_date[0]} ({min_date[1]} 条信息)
-- **总体趋势**: {'上升' if sorted_dates[-1][1] > sorted_dates[0][1] else '下降'}
+| 指标 | 日期 | 数量 |
+|:-----|:-----|-----:|
+| 发布高峰 | {max_date[0]} | {max_date[1]} 条 |
+| 发布低谷 | {min_date[0]} | {min_date[1]} 条 |
 
-信息发布的时间分布反映了该主题在近期的关注度变化。"""
+**总体趋势**: {trend_direction}
+
+信息发布的时间分布反映了该主题在近期的关注度变化。
+"""
         else:
-            trend += "暂无足够的时间序列数据进行趋势分析。"
+            trend += "*暂无足够的时间序列数据进行趋势分析。*\n"
         
-        trend += "\n\n### 信息来源分析\n\n"
+        trend += "\n### 4.2 信息来源分析\n\n"
         
         source_dist = statistics.get('source_distribution', {})
         if source_dist:
-            trend += "主要信息来源分布：\n\n"
+            total = sum(source_dist.values())
             sorted_sources = sorted(source_dist.items(), key=lambda x: x[1], reverse=True)
+            
+            trend += "| 来源 | 数量 | 占比 |\n|:-----|-----:|-----:|\n"
             for source, count in sorted_sources:
-                percentage = count / sum(source_dist.values()) * 100
-                trend += f"- **{source}**: {count} 条 ({percentage:.1f}%)\n"
+                percentage = count / total * 100
+                trend += f"| {source} | {count} 条 | {percentage:.1f}% |\n"
+        else:
+            trend += "*暂无信息来源数据。*\n"
         
         return trend
     
     def _generate_statistics(self, analysis_result: Dict[str, Any], 
                             visualization_paths: Dict[str, str]) -> str:
         """生成数据统计章节"""
-        statistics_section = """## 四、数据统计与可视化
+        statistics_section = """## 五、数据统计与可视化
 
 本章节通过多维度统计和可视化图表，呈现信息采集和分析的整体情况。
 
 """
         
-        # 插入可视化图表
-        if 'wordcloud' in visualization_paths:
-            statistics_section += """### 热点词云图
+        viz_items = [
+            ('wordcloud', '5.1 热点词云图', 'wordcloud.png', 
+             '词云图展示了本次分析中出现频率最高的关键词，词汇大小代表其出现频次。'),
+            ('timeline', '5.2 时间趋势图', 'timeline.png', 
+             '时间趋势图展示了信息发布的时间分布，反映主题热度的变化。'),
+            ('source_distribution', '5.3 信息源分布', 'source_distribution.png', 
+             '信息源分布图展示了各数据源的贡献占比。'),
+            ('score_distribution', '5.4 质量评分分布', 'score_distribution.png', 
+             '质量评分分布图展示了筛选后信息的质量分布情况。'),
+        ]
+        
+        has_viz = False
+        for key, title, filename, desc in viz_items:
+            if key in visualization_paths:
+                has_viz = True
+                statistics_section += f"""### {title}
 
-![热点词云](./assets/wordcloud.png)
+<div align="center">
 
-词云图展示了本次分析中出现频率最高的关键词，词汇大小代表其出现频次。
+![{title}](./assets/{filename})
+
+</div>
+
+{desc}
 
 """
         
-        if 'timeline' in visualization_paths:
-            statistics_section += """### 时间趋势图
-
-![时间趋势](./assets/timeline.png)
-
-时间趋势图展示了信息发布的时间分布，反映主题热度的变化。
-
-"""
-        
-        if 'source_distribution' in visualization_paths:
-            statistics_section += """### 信息源分布
-
-![信息源分布](./assets/source_distribution.png)
-
-信息源分布图展示了各数据源的贡献占比。
-
-"""
-        
-        if 'score_distribution' in visualization_paths:
-            statistics_section += """### 质量评分分布
-
-![评分分布](./assets/score_distribution.png)
-
-质量评分分布图展示了筛选后信息的质量分布情况。
-
-"""
+        if not has_viz:
+            statistics_section += "*暂无可视化图表。*\n"
         
         return statistics_section
     
     def _generate_recommendations(self, analysis_result: Dict[str, Any]) -> str:
         """生成建议章节"""
-        recommendations = """## 五、相关建议
+        statistics = analysis_result.get('statistics', {})
+        avg_score = statistics.get('average_score', 0)
+        
+        # 根据平均分给出不同建议
+        quality_note = '整体质量较高' if avg_score >= 0.7 else '建议扩大采集范围以获取更多高质量信息'
+        
+        recommendations = f"""## 六、相关建议
 
 基于以上分析，我们提出以下建议：
 
-### 关注要点
+### 6.1 关注要点
 
-1. **持续监测**: 建议持续关注高评分信息源，及时获取最新动态
-2. **深度分析**: 对重点事件进行更深入的调研和分析
-3. **趋势预判**: 结合历史数据和当前趋势，预判未来发展方向
+| 序号 | 建议 | 说明 |
+|:----:|:-----|:-----|
+| 1 | **持续监测** | 持续关注高评分信息源，及时获取最新动态 |
+| 2 | **深度分析** | 对重点事件进行更深入的调研和分析 |
+| 3 | **趋势预判** | 结合历史数据和当前趋势，预判未来发展方向 |
 
-### 信息质量
+### 6.2 信息质量
 
-- 本次分析的信息经过多维度评分筛选，整体质量较高
-- 建议重点关注评分在0.8以上的信息
+- 本次分析的信息经过多维度评分筛选，{quality_note}
+- 建议重点关注评分在 **0.8 以上** 的信息
 - 对于来源单一的信息，建议进行交叉验证
 
-### 后续行动
+### 6.3 后续行动
 
 1. 针对重点事件制定应对策略
 2. 定期更新分析报告，把握最新动态
@@ -289,38 +326,52 @@ class ReportGenerator:
     
     def _generate_appendix(self, analysis_result: Dict[str, Any]) -> str:
         """生成附录"""
-        appendix = """## 附录
+        gen_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        
+        appendix = f"""---
 
-### 分析方法说明
+## 附录
 
-本报告采用"智览"智能信息聚合与分析系统生成，该系统具有以下特点：
+### A. 分析方法说明
 
-1. **多源采集**: 整合Bing Search、NewsAPI、arXiv等多个数据源
-2. **智能筛选**: 使用大语言模型进行多维度评分（相关性、重要性、时效性、可靠性）
-3. **深度分析**: 提取关键要点，识别信息关联关系
-4. **可视化呈现**: 生成词云、趋势图等多种可视化图表
-5. **自动化流程**: 全流程自动化，支持定期更新
+本报告采用 **智览** 智能信息聚合与分析系统生成，该系统具有以下特点：
 
-### 评分标准
+| 特点 | 说明 |
+|:-----|:-----|
+| 多源采集 | 整合 Google Search (SerpAPI)、NewsAPI、arXiv 等多个数据源 |
+| 智能筛选 | 使用大语言模型进行多维度评分（相关性、重要性、时效性、可靠性） |
+| 深度分析 | 提取关键要点，识别信息关联关系 |
+| 可视化呈现 | 生成词云、趋势图等多种可视化图表 |
+| 自动化流程 | 全流程自动化，支持定期更新 |
 
-- **相关性**: 0-1分，衡量信息与主题的关联程度
-- **重要性**: 0-1分，衡量信息的重要性和影响力
-- **时效性**: 0-1分，衡量信息的新鲜度
-- **可靠性**: 0-1分，衡量信息来源的权威性
+### B. 评分标准
 
-综合评分 = 0.3×相关性 + 0.3×重要性 + 0.2×时效性 + 0.2×可靠性
+| 维度 | 权重 | 说明 |
+|:-----|:----:|:-----|
+| 相关性 (relevance) | 30% | 衡量信息与主题的关联程度 |
+| 重要性 (importance) | 30% | 衡量信息的重要性和影响力 |
+| 时效性 (timeliness) | 20% | 衡量信息的新鲜度 |
+| 可靠性 (reliability) | 20% | 衡量信息来源的权威性 |
 
-### 技术栈
+**综合评分公式**: `score = 0.3×relevance + 0.3×importance + 0.2×timeliness + 0.2×reliability`
 
-- 数据采集: Requests, BeautifulSoup
-- 智能分析: 大语言模型API (Qwen/GPT)
-- 数据可视化: Matplotlib, Seaborn, WordCloud
-- 文本处理: Jieba
-- 报告生成: Markdown, LaTeX
+### C. 技术栈
+
+| 模块 | 技术 |
+|:-----|:-----|
+| 数据采集 | Requests, SerpAPI, BeautifulSoup |
+| 智能分析 | 大语言模型 API (Qwen / GPT) |
+| 数据可视化 | Matplotlib, Seaborn, WordCloud |
+| 文本处理 | Jieba, NLTK |
+| 报告生成 | Markdown, LaTeX |
 
 ---
 
-*本报告由智览系统自动生成于 {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}*
+<div align="center">
+
+*本报告由智览系统自动生成于 {gen_time}*
+
+</div>
 """
         
         return appendix
@@ -359,7 +410,7 @@ if __name__ == "__main__":
         'statistics': {
             'total_count': 35,
             'average_score': 0.75,
-            'source_distribution': {'NewsAPI': 15, 'Bing': 12, 'arXiv': 8},
+            'source_distribution': {'NewsAPI': 15, 'Google (SerpAPI)': 12, 'arXiv': 8},
             'date_distribution': {'2025-12-21': 8, '2025-12-22': 12, '2025-12-23': 15}
         }
     }

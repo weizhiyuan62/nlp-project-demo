@@ -1,10 +1,15 @@
 # API配置文件
 
-# 搜索引擎配置
-bing_search:
+# 搜索引擎配置（使用 SerpAPI 代理的 Google 搜索）
+serpapi_google:
   enabled: true
-  api_key: "YOUR_BING_API_KEY"
-  endpoint: "https://api.bing.microsoft.com/v7.0/search"
+  api_key: "08d8f958b2f102865798a4c28480f8506376f7fe91be7ddc00dcfed8404485cf"
+  # 参考 https://serpapi.com/google-search-api
+  google_domain: "google.com"
+  gl: "us"         # 地理位置 (e.g., cn, us)
+  hl: "zh-cn"      # 界面语言
+  num: 10           # 每页结果数
+  max_results: 30   # 最大采集数
 
 # NewsAPI配置
 newsapi:
@@ -25,7 +30,7 @@ arxiv:
   default_sets:
     - "cs"  # computer science
   # 每次请求的最大记录数
-  max_records: 40
+  max_records: 30
 
 # 大模型API配置 (可选择Qwen, gemini等)
 llm:

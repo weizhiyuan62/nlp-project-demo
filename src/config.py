@@ -143,7 +143,7 @@ class ConfigManager:
         获取指定服务的API配置
         
         Args:
-            service: 服务名称 (bing_search, newsapi, arxiv, llm, image_generation)
+            service: 服务名称 (serpapi_google, newsapi, arxiv, llm, image_generation)
             
         Returns:
             API配置字典
