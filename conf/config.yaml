@@ -12,9 +12,9 @@ project:
 # 信息采集配置
 collection:
   topics:
-    - "AI development"
-    - "Climate change"
-    - "Global economy"
+    - "nlp developments"
+    - "Google"
+    - "Nvidia"
   
   # 时间范围 (today, last_3_days, last_week, custom)
   time_range: "last_3_days"
