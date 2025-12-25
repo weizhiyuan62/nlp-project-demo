@@ -54,6 +54,8 @@ class ReportGenerator:
                 report_content.append(self._generate_executive_summary(analysis_result))
             elif section == 'key_events':
                 report_content.append(self._generate_key_events(analysis_result))
+            elif section == 'overall_analysis':
+                report_content.append(self._generate_overall_analysis(analysis_result, topics))
             elif section == 'trend_analysis':
                 report_content.append(self._generate_trend_analysis(analysis_result))
             elif section == 'statistics':
@@ -155,6 +157,20 @@ class ReportGenerator:
 """
         
         return events
+    
+    def _generate_overall_analysis(self, analysis_result: Dict[str, Any], topics: List[str]) -> str:
+        """生成总体分析章节"""
+        overall_analysis = analysis_result.get('overall_analysis', '')
+        
+        section = f"""## 三、智览总体分析
+
+> 基于以上采集的信息和重点事件，智览系统对「{"、".join(topics)}」进行的深度总体分析如下：
+
+{overall_analysis if overall_analysis else '暂无总体分析数据。'}
+
+---
+"""
+        return section
     
     def _generate_trend_analysis(self, analysis_result: Dict[str, Any]) -> str:
         """生成趋势分析"""
@@ -353,5 +369,5 @@ if __name__ == "__main__":
         'timeline': 'assets/timeline.png'
     }
     
-    report_path = generator.generate_report(['人工智能'], test_analysis, test_viz_paths)
+    report_path = generator.generate_report(['Test Case: 自然语言处理'], test_analysis, test_viz_paths)
     print(f"报告已生成: {report_path}")

@@ -12,10 +12,20 @@ newsapi:
   api_key: "7ef303e7bb7641ee9b7a8050cc23f309"
   endpoint: "https://newsapi.org/v2/everything"
 
-# 学术API配置
+# arxiv API配置 - arXiv OAI-PMH v2.0(获取学术性和专业性更强的数据)
 arxiv:
   enabled: true
-  endpoint: "http://export.arxiv.org/api/query"
+  # OAI-PMH 基础 URL（2025年3月更新）
+  endpoint: "https://oaipmh.arxiv.org/oai"
+  # 元数据格式: oai_dc, arXiv, arXivRaw
+  metadata_format: "arXiv"
+  # 默认采集的分类集合 (set)
+  # 格式: group:archive:CATEGORY
+  # 例如: cs (all CS), cs:cs:AI (AI only), physics:hep-th
+  default_sets:
+    - "cs"  # computer science
+  # 每次请求的最大记录数
+  max_records: 40
 
 # 大模型API配置 (可选择Qwen, gemini等)
 llm:

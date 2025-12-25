@@ -67,12 +67,16 @@ class InformationAnalyzer:
         # 统计分析
         statistics = self._compute_statistics(filtered_items)
         
+        # 生成总体分析（使用LLM整合所有信息生成深度分析）
+        overall_analysis = self._generate_overall_analysis(filtered_items, key_points, topics, statistics)
+        
         result = {
             'scored_items': scored_items,
             'filtered_items': filtered_items,
             'key_points': key_points,
             'relationships': relationships,
             'statistics': statistics,
+            'overall_analysis': overall_analysis,
             'analysis_time': datetime.now().isoformat()
         }
         
@@ -258,6 +262,117 @@ score = 0.3*relevance + 0.3*importance + 0.2*timeliness + 0.2*reliability
         self.logger.info(f"识别到 {len(top_keywords)} 个关键词")
         
         return relationships
+    
+    def _generate_overall_analysis(self, items: List[Dict[str, Any]], key_points: List[str], 
+                                   topics: List[str], statistics: Dict[str, Any]) -> str:
+        """
+        生成总体分析：整合所有信息，分析主题的总体趋势和洞察
+        
+        Args:
+            items: 筛选后的高质量信息列表
+            key_points: 提取的关键要点
+            topics: 主题列表
+            statistics: 统计信息
+            
+        Returns:
+            总体分析文本
+        """
+        self.logger.info("生成总体分析...")
+        
+        if not items:
+            return "暂无足够数据进行总体分析。"
+        
+        # 选取评分最高的前15条信息用于分析
+        top_items = sorted(items, key=lambda x: x.get('score', 0), reverse=True)[:15]
+        
+        # 构建信息摘要
+        items_summary = "\n".join([
+            f"- {item.get('title', '')[:80]}... (来源: {item.get('source_name', '')}, 评分: {item.get('score', 0):.2f})"
+            for item in top_items
+        ])
+        
+        # 关键要点摘要
+        key_points_text = "\n".join([f"- {point}" for point in key_points[:8]]) if key_points else "暂无关键要点"
+        
+        # 统计信息
+        source_info = ", ".join([f"{k}: {v}条" for k, v in statistics.get('source_distribution', {}).items()])
+        date_info = statistics.get('date_distribution', {})
+        date_range = f"{min(date_info.keys()) if date_info else 'N/A'} 至 {max(date_info.keys()) if date_info else 'N/A'}"
+        
+        prompt = f"""你是一位资深的信息分析专家和行业观察家。请基于以下收集到的信息，对「{", ".join(topics)}」这一主题进行深度总体分析。
+
+## 采集信息概况
+- 总信息数: {statistics.get('total_count', 0)} 条
+- 平均质量评分: {statistics.get('average_score', 0):.2f}
+- 信息来源: {source_info}
+- 时间范围: {date_range}
+
+## 重点信息摘要
+{items_summary}
+
+## 已提取的关键要点
+{key_points_text}
+
+---
+
+请生成一份「智览总体分析」，包含以下内容：
+
+1. **总体态势判断**: 该主题在近期的总体发展态势是什么？（上升/下降/平稳/波动）
+
+2. **核心发现**: 最重要的3-5个发现是什么？这些发现之间有什么关联？
+
+3. **热点子主题**: 该主题下最受关注的2-3个子方向是什么？为什么？
+
+4. **趋势预判**: 基于当前数据，该主题未来1-2周可能的发展方向是什么？
+
+5. **关注建议**: 对于关注该主题的人，应该重点关注什么？
+
+请用专业但易懂的语言，提供有洞察力的分析。每个部分用 Markdown 格式输出，总字数控制在 600-1000 字。
+"""
+        
+        try:
+            response = self._call_qwen_api(prompt, task_type='analysis')
+            if response and not response.startswith('模拟'):
+                self.logger.info("总体分析生成完成")
+                return response
+            else:
+                return self._generate_fallback_analysis(topics, statistics, key_points)
+        except Exception as e:
+            self.logger.error(f"总体分析生成失败: {e}")
+            return self._generate_fallback_analysis(topics, statistics, key_points)
+    
+    def _generate_fallback_analysis(self, topics: List[str], statistics: Dict[str, Any], key_points: List[str]) -> str:
+        """
+        生成备用的总体分析（当LLM不可用时）
+        """
+        topic_str = "、".join(topics)
+        total = statistics.get('total_count', 0)
+        avg_score = statistics.get('average_score', 0)
+        sources = list(statistics.get('source_distribution', {}).keys())
+        
+        analysis = f"""### 总体态势
+
+基于本次采集的 {total} 条高质量信息（平均评分 {avg_score:.2f}），「{topic_str}」主题在近期保持较高的关注度。
+
+### 核心发现
+
+"""
+        if key_points:
+            for i, point in enumerate(key_points[:5], 1):
+                analysis += f"{i}. {point}\n"
+        else:
+            analysis += "暂无足够数据提取核心发现。\n"
+        
+        analysis += f"""
+### 信息来源分布
+
+本次分析的信息主要来自: {"、".join(sources) if sources else "暂无数据"}
+
+### 关注建议
+
+建议持续关注该主题的最新发展，特别是高评分信息源的更新。
+"""
+        return analysis
     
     def _compute_statistics(self, items: List[Dict[str, Any]]) -> Dict[str, Any]:
         """

@@ -251,69 +251,231 @@ class DataCollector:
     
     def collect_from_arxiv(self, query: str, start_date: datetime, end_date: datetime) -> List[Dict[str, Any]]:
         """
-        从arXiv API采集学术论文信息
+        从 arXiv OAI-PMH 接口采集学术论文信息
+        
+        使用 OAI-PMH v2.0 协议，基础 URL: https://oaipmh.arxiv.org/oai
+        支持的元数据格式: oai_dc, arXiv, arXivRaw
         
         Args:
-            query: 搜索查询
+            query: 搜索查询（用于关键词过滤）
             start_date: 开始日期
             end_date: 结束日期
             
         Returns:
             采集到的信息列表
         """
-        self.logger.info(f"从arXiv采集: {query}")
+        self.logger.info(f"从 arXiv OAI-PMH 采集: {query}")
         
         api_config = self.config.get_api_config('arxiv')
-        endpoint = api_config.get('endpoint')
+        endpoint = api_config.get('endpoint', 'https://oaipmh.arxiv.org/oai')
+        metadata_format = api_config.get('metadata_format', 'arXiv')
+        default_sets = api_config.get('default_sets', ['cs'])
+        max_records = api_config.get('max_records', 100)
         
-        # 构建查询参数
-        search_query = quote(f'all:{query}')
-        max_results = self.config.get('collection', 'max_items_per_topic', default=50)
-        url = f"{endpoint}?search_query={search_query}&start=0&max_results={max_results}&sortBy=submittedDate&sortOrder=descending"
+        items = []
+        
+        # 将查询关键词转换为小写用于匹配
+        query_keywords = query.lower().split()
         
         try:
-            response = requests.get(url, timeout=30)
-            response.raise_for_status()
-            
-            # 解析XML响应
-            import xml.etree.ElementTree as ET
-            root = ET.fromstring(response.content)
-            
-            # 定义命名空间
-            ns = {
-                'atom': 'http://www.w3.org/2005/Atom',
-                'arxiv': 'http://arxiv.org/schemas/atom'
-            }
-            
-            items = []
-            for entry in root.findall('atom:entry', ns):
-                published = entry.find('atom:published', ns)
-                if published is not None:
-                    pub_date = datetime.fromisoformat(published.text.replace('Z', '+00:00'))
-                    # 过滤日期范围
-                    if pub_date < start_date or pub_date > end_date:
-                        continue
+            # 为每个配置的 set 采集数据
+            for set_spec in default_sets:
+                self.logger.info(f"采集 arXiv set: {set_spec}")
                 
-                title_elem = entry.find('atom:title', ns)
-                summary_elem = entry.find('atom:summary', ns)
-                link_elem = entry.find('atom:id', ns)
-                
-                item = {
-                    'title': title_elem.text.strip() if title_elem is not None else '',
-                    'url': link_elem.text if link_elem is not None else '',
-                    'snippet': summary_elem.text.strip() if summary_elem is not None else '',
-                    'date_published': published.text if published is not None else datetime.now().isoformat(),
-                    'source': 'arXiv',
-                    'source_name': 'arXiv.org'
+                # 构建 OAI-PMH ListRecords 请求
+                # 注意: OAI-PMH 的 datestamp 不支持按提交日期筛选，只能按修改日期
+                params = {
+                    'verb': 'ListRecords',
+                    'metadataPrefix': metadata_format,
+                    'set': set_spec,
+                    'from': start_date.strftime('%Y-%m-%d'),
+                    'until': end_date.strftime('%Y-%m-%d')
                 }
-                items.append(item)
+                
+                set_items = self._fetch_arxiv_records(endpoint, params, query_keywords, max_records)
+                items.extend(set_items)
+                
+                # 避免请求过快
+                time.sleep(1)
             
-            self.logger.info(f"从arXiv采集到 {len(items)} 条信息")
+            self.logger.info(f"从 arXiv 采集到 {len(items)} 条信息")
             return items
             
         except Exception as e:
-            self.logger.error(f"arXiv API调用失败: {e}")
+            self.logger.error(f"arXiv OAI-PMH 调用失败: {e}")
             return []
+    
+    def _fetch_arxiv_records(self, endpoint: str, params: dict, query_keywords: List[str], max_records: int) -> List[Dict[str, Any]]:
+        """
+        从 arXiv OAI-PMH 接口获取记录
+        
+        Args:
+            endpoint: OAI-PMH 基础 URL
+            params: 请求参数
+            query_keywords: 用于过滤的关键词列表
+            max_records: 最大记录数
+            
+        Returns:
+            采集到的信息列表
+        """
+        import xml.etree.ElementTree as ET
+        
+        items = []
+        resumption_token = None
+        
+        # OAI-PMH 命名空间
+        ns = {
+            'oai': 'http://www.openarchives.org/OAI/2.0/',
+            'arxiv': 'http://arxiv.org/OAI/arXiv/',
+            'dc': 'http://purl.org/dc/elements/1.1/',
+            'oai_dc': 'http://www.openarchives.org/OAI/2.0/oai_dc/'
+        }
+        
+        while len(items) < max_records:
+            try:
+                # 如果有 resumptionToken，使用它继续获取
+                if resumption_token:
+                    request_params = {
+                        'verb': 'ListRecords',
+                        'resumptionToken': resumption_token
+                    }
+                else:
+                    request_params = params
+                
+                response = requests.get(endpoint, params=request_params, timeout=60)
+                response.raise_for_status()
+                
+                root = ET.fromstring(response.content)
+                
+                # 检查是否有错误
+                error = root.find('.//oai:error', ns)
+                if error is not None:
+                    error_code = error.get('code', 'unknown')
+                    if error_code == 'noRecordsMatch':
+                        self.logger.info("没有匹配的记录")
+                        break
+                    else:
+                        self.logger.warning(f"OAI-PMH 错误: {error_code} - {error.text}")
+                        break
+                
+                # 解析记录
+                records = root.findall('.//oai:record', ns)
+                
+                for record in records:
+                    if len(items) >= max_records:
+                        break
+                    
+                    item = self._parse_arxiv_record(record, ns, query_keywords)
+                    if item:
+                        items.append(item)
+                
+                # 检查是否有更多记录
+                token_elem = root.find('.//oai:resumptionToken', ns)
+                if token_elem is not None and token_elem.text:
+                    resumption_token = token_elem.text.strip()
+                    time.sleep(1)  # 避免请求过快
+                else:
+                    break
+                    
+            except requests.exceptions.RequestException as e:
+                self.logger.error(f"arXiv 请求失败: {e}")
+                break
+            except ET.ParseError as e:
+                self.logger.error(f"arXiv XML 解析失败: {e}")
+                break
+        
+        return items
+    
+    def _parse_arxiv_record(self, record, ns: dict, query_keywords: List[str]) -> Dict[str, Any]:
+        """
+        解析单个 arXiv OAI-PMH 记录
+        
+        Args:
+            record: XML 记录元素
+            ns: 命名空间字典
+            query_keywords: 用于过滤的关键词列表
+            
+        Returns:
+            解析后的信息字典，如果不匹配则返回 None
+        """
+        try:
+            # 获取元数据
+            metadata = record.find('.//oai:metadata', ns)
+            if metadata is None:
+                return None
+            
+            # 尝试解析 arXiv 格式
+            arxiv_meta = metadata.find('.//arxiv:arXiv', ns)
+            
+            if arxiv_meta is not None:
+                # arXiv 格式
+                title_elem = arxiv_meta.find('arxiv:title', ns)
+                abstract_elem = arxiv_meta.find('arxiv:abstract', ns)
+                id_elem = arxiv_meta.find('arxiv:id', ns)
+                created_elem = arxiv_meta.find('arxiv:created', ns)
+                categories_elem = arxiv_meta.find('arxiv:categories', ns)
+                
+                # 获取作者
+                authors = []
+                for author in arxiv_meta.findall('arxiv:authors/arxiv:author', ns):
+                    keyname = author.find('arxiv:keyname', ns)
+                    forenames = author.find('arxiv:forenames', ns)
+                    if keyname is not None:
+                        name = keyname.text
+                        if forenames is not None:
+                            name = f"{forenames.text} {name}"
+                        authors.append(name)
+                
+                title = title_elem.text.strip() if title_elem is not None and title_elem.text else ''
+                abstract = abstract_elem.text.strip() if abstract_elem is not None and abstract_elem.text else ''
+                arxiv_id = id_elem.text.strip() if id_elem is not None and id_elem.text else ''
+                created = created_elem.text.strip() if created_elem is not None and created_elem.text else ''
+                categories = categories_elem.text.strip() if categories_elem is not None and categories_elem.text else ''
+                
+            else:
+                # 尝试 oai_dc 格式
+                dc_meta = metadata.find('.//oai_dc:dc', ns)
+                if dc_meta is None:
+                    return None
+                
+                title_elem = dc_meta.find('dc:title', ns)
+                description_elem = dc_meta.find('dc:description', ns)
+                identifier_elem = dc_meta.find('dc:identifier', ns)
+                date_elem = dc_meta.find('dc:date', ns)
+                
+                title = title_elem.text.strip() if title_elem is not None and title_elem.text else ''
+                abstract = description_elem.text.strip() if description_elem is not None and description_elem.text else ''
+                arxiv_id = identifier_elem.text.strip() if identifier_elem is not None and identifier_elem.text else ''
+                created = date_elem.text.strip() if date_elem is not None and date_elem.text else ''
+                categories = ''
+                authors = [creator.text for creator in dc_meta.findall('dc:creator', ns) if creator.text]
+            
+            # 关键词过滤（在标题和摘要中搜索）
+            if query_keywords:
+                text_to_search = f"{title} {abstract}".lower()
+                if not any(kw in text_to_search for kw in query_keywords):
+                    return None
+            
+            # 构建 URL
+            if arxiv_id and not arxiv_id.startswith('http'):
+                url = f"https://arxiv.org/abs/{arxiv_id}"
+            else:
+                url = arxiv_id
+            
+            return {
+                'title': title,
+                'url': url,
+                'snippet': abstract[:500] + '...' if len(abstract) > 500 else abstract,
+                'date_published': created,
+                'source': 'arXiv',
+                'source_name': 'arXiv.org',
+                'authors': ', '.join(authors[:5]) if authors else '',
+                'categories': categories
+            }
+            
+        except Exception as e:
+            self.logger.warning(f"解析 arXiv 记录失败: {e}")
+            return None
     
     def _deduplicate(self, items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """

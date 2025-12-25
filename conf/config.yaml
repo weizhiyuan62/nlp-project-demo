@@ -12,9 +12,9 @@ project:
 # 信息采集配置
 collection:
   topics:
-    - "人工智能"
-    - "机器学习"
-    - "深度学习"
+    - "AI development"
+    - "Climate change"
+    - "Global economy"
   
   # 时间范围 (today, last_3_days, last_week, custom)
   time_range: "last_3_days"
@@ -30,7 +30,7 @@ collection:
     social_media: false
   
   # 每个主题最大采集数量
-  max_items_per_topic: 50
+  max_items_per_topic: 30
 
 # 分析配置
 analysis:
@@ -59,6 +59,7 @@ report:
   sections:
     - "executive_summary"      # 执行摘要
     - "key_events"            # 重点事件解读
+    - "overall_analysis"      # 总体分析（新增）
     - "trend_analysis"        # 趋势分析
     - "statistics"            # 数据统计
     - "recommendations"       # 相关建议

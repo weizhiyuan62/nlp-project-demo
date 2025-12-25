@@ -166,14 +166,11 @@ def main(cfg: DictConfig):
         logger.info("配置加载完成")
         logger.debug(f"完整配置:\n{OmegaConf.to_yaml(cfg)}")
         
-        # 初始化全局配置
-        config = init_config(cfg, Path.cwd())
+        config = init_config(cfg, Path.cwd())  # 初始化全局配置
         
-        # 创建系统实例
-        system = ZhiLanSystem(config)
+        system = ZhiLanSystem(config)          # 创建系统实例
         
-        # 运行分析流程
-        system.run()
+        system.run()                           # 运行分析流程
         
     except KeyboardInterrupt:
         print("\n\n用户中断执行")
